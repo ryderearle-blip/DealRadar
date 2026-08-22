@@ -1,0 +1,35 @@
+@media (min-width: 900px) {
+  .phone { width:min(1180px,calc(100vw - 80px)); height:min(760px,calc(100vh - 72px)); border:1px solid #dbe3e6; border-radius:28px; display:grid; grid-template-columns:190px 1fr; grid-template-rows:92px 1fr; box-shadow:0 26px 70px #1b293526; }
+  .status { display:none; }
+  .phone > header { grid-column:1/3; grid-row:1; border-bottom:1px solid var(--line); padding:19px 30px; }
+  .phone > header h1 { font-size:31px; }
+  .phone > header > div { display:flex; align-items:center; gap:28px; }
+  .content { grid-column:2; grid-row:2; background:#f8fafb; }
+  .phone > nav { grid-column:1; grid-row:2; height:auto; display:flex; flex-direction:column; gap:8px; border-top:0; border-right:1px solid var(--line); padding:24px 14px; }
+  .phone > nav button { min-height:55px; flex-direction:row; justify-content:flex-start; gap:13px; border-radius:16px; padding:0 15px; font-size:14px; }
+  .phone > nav .active { background:#eaf7ef; }
+  .page { padding:28px 36px; }
+  .search-page { max-width:1050px; margin:auto; }
+  .search-page > .searchbox { max-width:720px; }
+  .categories { grid-template-columns:repeat(4,1fr); }
+  .trend { max-width:720px; }
+  .map-page { padding:0; display:grid; grid-template-columns:minmax(0,1fr) 360px; grid-template-rows:auto minmax(0,1fr); }
+  .map-top { grid-column:1; grid-row:1; padding:22px 26px 8px; background:#fff; }
+  .map-top .searchbox { max-width:620px; }
+  .map { grid-column:1; grid-row:2; min-height:0; }
+  .sheet { grid-column:2; grid-row:1/3; margin:18px; border:1px solid var(--line); border-radius:24px; align-self:start; padding:18px; box-shadow:0 12px 30px #172b3c12; }
+  .sheet > i { display:none; }
+  .sheet-head h2 { font-size:24px; margin-bottom:18px; }
+  .deal { grid-template-columns:58px 1fr; }
+  .deal > strong { grid-column:1/3; text-align:left; font-size:28px; border-top:1px solid var(--line); padding-top:14px; }
+  .deal > strong button { width:100%; font-size:15px; padding:12px; }
+  .saved-list { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .saved-list article { margin:0; }
+  .summary { max-width:560px; }
+  .segments { max-width:440px; }
+  .page > .searchbox { max-width:620px; }
+  .featured, .alert-row { max-width:680px; }
+  .identity, .settings, .privacy { max-width:700px; }
+  .toast { bottom:28px; }
+  aside { left:auto; right:30px; bottom:18px; align-items:flex-end; }
+}
