@@ -6,6 +6,7 @@ type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
 const icons: Record<Tab, string> = { Search: '⌕', Map: '⌖', Saved: '♡', Alerts: '♧', Profile: '○' };
 type Offer = {
+  id?: string;
   store: string;
   price: number;
   distance: string;
@@ -39,6 +40,27 @@ const offers: Offer[] = [
 ];
 
 const HOME: [number, number] = [-81.3627789, 35.2444756];
+const globalPreviewOffers: Offer[] = [
+  ['New York', -74.006, 40.7128, 739], ['Los Angeles', -118.2437, 34.0522, 749],
+  ['Chicago', -87.6298, 41.8781, 729], ['Toronto', -79.3832, 43.6532, 755],
+  ['Mexico City', -99.1332, 19.4326, 719], ['São Paulo', -46.6333, -23.5505, 735],
+  ['Buenos Aires', -58.3816, -34.6037, 742], ['London', -0.1276, 51.5072, 759],
+  ['Paris', 2.3522, 48.8566, 754], ['Lagos', 3.3792, 6.5244, 721],
+  ['Cairo', 31.2357, 30.0444, 744], ['Johannesburg', 28.0473, -26.2041, 728],
+  ['Dubai', 55.2708, 25.2048, 768], ['Mumbai', 72.8777, 19.076, 732],
+  ['Singapore', 103.8198, 1.3521, 746], ['Tokyo', 139.6917, 35.6895, 751],
+  ['Sydney', 151.2093, -33.8688, 763],
+].map(([city, lng, lat, price]) => ({
+  id: `global-preview-${city}`,
+  store: `Tech Market · ${city}`,
+  price: Number(price),
+  distance: 'In this map area',
+  color: '#6d4aff',
+  mark: 'DR',
+  detail: 'Preview listing',
+  address: `${city} · retailer feed pending`,
+  coordinates: [Number(lng), Number(lat)] as [number, number],
+}));
 const MAPLIBRE_VERSION = '5.24.0';
 let mapLibraryPromise: Promise<any> | null = null;
 
@@ -124,6 +146,7 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
     let cancelled = false;
     let map: any;
     const markers: { marker: any; element: HTMLElement; offer?: Offer }[] = [];
+    let previewMarkers: { marker: any; element: HTMLElement; offer?: Offer }[] = [];
 
     loadMapLibrary().then((maplibregl) => {
       if (cancelled || !containerRef.current) return;
@@ -133,8 +156,9 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
         style: 'https://tiles.openfreemap.org/styles/liberty',
         center: [-81.242, 35.251],
         zoom: 10.35,
-        minZoom: 8,
+        minZoom: 2.2,
         maxZoom: 18,
+        renderWorldCopies: false,
         attributionControl: false,
       });
       mapRef.current = map;
@@ -148,26 +172,35 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
       home.innerHTML = '<span>⌂</span>';
       markers.push({ marker: new maplibregl.Marker({ element: home, anchor: 'center' }).setLngLat(HOME).addTo(map), element: home });
 
-      offers.filter(item => item.coordinates).forEach((item) => {
+      const createOfferMarker = (item: Offer, preview = false) => {
         const marker = document.createElement('button');
         marker.type = 'button';
-        marker.className = 'price-marker';
-        marker.dataset.store = item.store;
-        marker.setAttribute('aria-label', `${item.store}, $${item.price}, ${item.distance} away`);
+        marker.className = `price-marker${preview ? ' preview-marker' : ''}`;
+        marker.dataset.offerId = item.id ?? item.store;
+        marker.setAttribute('aria-label', `${item.store}, $${item.price}, ${item.distance}`);
         marker.style.setProperty('--marker-color', item.color);
         marker.innerHTML = `<span>${item.mark}</span><strong>$${item.price}</strong>`;
         marker.addEventListener('click', () => setOffer(item));
-        markers.push({ marker: new maplibregl.Marker({ element: marker, anchor: 'bottom' }).setLngLat(item.coordinates!).addTo(map), element: marker, offer: item });
+        return { marker: new maplibregl.Marker({ element: marker, anchor: 'bottom' }).setLngLat(item.coordinates!).addTo(map), element: marker, offer: item };
+      };
+
+      offers.filter(item => item.coordinates).forEach((item) => {
+        markers.push(createOfferMarker(item));
       });
 
       const updateStoreRange = () => {
         const zoom = map.getZoom();
-        const range = zoom >= 10.2
-          ? { radius: 20, tier: 1 as const }
-          : zoom >= 9.2
-            ? { radius: 30, tier: 2 as const }
-            : { radius: 45, tier: 3 as const };
+        const radius = zoom >= 10.2 ? 20
+          : zoom >= 9.2 ? 30
+            : zoom >= 8.2 ? 45
+              : zoom >= 7 ? 80
+                : zoom >= 5.5 ? 250
+                  : zoom >= 4 ? 600
+                    : 1500;
         const bounds = map.getBounds();
+        previewMarkers.forEach(entry => entry.marker.remove());
+        previewMarkers = [];
+
         const visibleStores = markers.filter(entry => entry.offer?.coordinates && bounds.contains(entry.offer.coordinates));
         markers.forEach(entry => {
           if (!entry.offer) return;
@@ -176,13 +209,49 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
           entry.element.hidden = hidden;
           entry.element.setAttribute('aria-hidden', String(hidden));
         });
-        const visibleOffers = visibleStores.flatMap(entry => entry.offer ? [entry.offer] : []);
-        if (visibleOffers.length && !visibleOffers.some(item => item.store === selectedOfferRef.current.store)) {
+
+        const center = map.getCenter();
+        const outsideHomeRegion = Math.abs(center.lng - HOME[0]) > .35 || Math.abs(center.lat - HOME[1]) > .28 || zoom < 7;
+        const previewCount = outsideHomeRegion && zoom >= 7 ? Math.max(0, 5 - visibleStores.length) : 0;
+        const previewNames = ['Tech Market', 'Device Depot', 'Value Electronics', 'Home AV', 'Digital Outlet', 'DealMart'];
+        const previewColors = ['#6d4aff', '#087e8b', '#ec6b2d', '#3a7d44', '#bd3f76', '#5b6472'];
+        const positions = [[.35,.34],[.50,.30],[.65,.38],[.39,.63],[.54,.68],[.67,.59]];
+        const canvas = map.getCanvas();
+        const zoneKey = `${Math.round(center.lng * 10)}-${Math.round(center.lat * 10)}-${Math.floor(zoom)}`;
+
+        for (let index = 0; index < previewCount; index += 1) {
+          const [x, y] = positions[index];
+          const location = map.unproject([canvas.clientWidth * x, canvas.clientHeight * y]);
+          const seed = Math.abs(Math.round(location.lng * 997 + location.lat * 991 + index * 47));
+          const previewOffer: Offer = {
+            id: `preview-${zoneKey}-${index}`,
+            store: previewNames[index],
+            price: 699 + (seed % 101),
+            distance: 'In this map area',
+            color: previewColors[index],
+            mark: 'DR',
+            detail: 'Preview listing',
+            address: 'Preview location · retailer feed pending',
+            coordinates: [location.lng, location.lat],
+          };
+          previewMarkers.push(createOfferMarker(previewOffer, true));
+        }
+
+        if (zoom < 7) {
+          globalPreviewOffers
+            .filter(item => item.coordinates && bounds.contains(item.coordinates))
+            .forEach(item => previewMarkers.push(createOfferMarker(item, true)));
+        }
+
+        const allVisibleStores = [...visibleStores, ...previewMarkers];
+        const visibleOffers = allVisibleStores.flatMap(entry => entry.offer ? [entry.offer] : []);
+        const selectedId = selectedOfferRef.current.id ?? selectedOfferRef.current.store;
+        if (visibleOffers.length && !visibleOffers.some(item => (item.id ?? item.store) === selectedId)) {
           const bestVisibleOffer = visibleOffers.reduce((best, item) => item.price < best.price ? item : best);
           selectedOfferRef.current = bestVisibleOffer;
           setOffer(bestVisibleOffer);
         }
-        setView({ radius: range.radius, count: visibleStores.length });
+        setView({ radius, count: allVisibleStores.length });
         setRefreshing(false);
       };
 
@@ -200,6 +269,7 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
     return () => {
       cancelled = true;
       markers.forEach(entry => entry.marker.remove());
+      previewMarkers.forEach(entry => entry.marker.remove());
       map?.remove();
       mapRef.current = null;
     };
@@ -207,14 +277,14 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
 
   useEffect(() => {
     containerRef.current?.querySelectorAll<HTMLElement>('.price-marker').forEach(marker => {
-      marker.classList.toggle('chosen', marker.dataset.store === offer.store);
+      marker.classList.toggle('chosen', marker.dataset.offerId === (offer.id ?? offer.store));
     });
   }, [offer.store, status]);
 
   const recenter = () => mapRef.current?.easeTo({ center: [-81.242, 35.251], zoom: 10.35, duration: 700 });
 
   return <div className="map-shell">
-    <div ref={containerRef} className="map" aria-label="Interactive map of DealRadar offers near Kings Mountain" />
+    <div ref={containerRef} className="map" aria-label="Interactive DealRadar store map" />
     {status === 'loading' && <div className="map-loading"><span />Loading detailed map…</div>}
     {status === 'error' && <div className="map-loading map-error">Map unavailable. Check your connection.</div>}
     <div className="map-guide">Drag to explore · Scroll or pinch to zoom</div>
