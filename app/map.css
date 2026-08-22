@@ -77,6 +77,8 @@
 .sample-badge b,
 .sample-badge span { display: block; }
 .sample-badge span { margin-top: 1px; color: #dce6ef; font-size: 8px; font-weight: 600; }
+.sample-badge.refreshing { background: #0d70e8e8; }
+.sample-badge.refreshing b::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border: 1px solid #fff; border-top-color: transparent; border-radius: 50%; animation: map-spin .65s linear infinite; }
 
 .recenter {
   position: absolute;

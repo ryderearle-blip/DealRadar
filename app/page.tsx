@@ -26,6 +26,16 @@ const offers: Offer[] = [
   { store: 'Walmart Belmont', price: 744, distance: '24.3 mi', color: '#1674ea', mark: '✦', detail: 'In stock', address: '701 Hawley Ave', coordinates: [-81.0354725, 35.2554193], mapTier: 2 },
   { store: 'Micro Center', price: 719, distance: '35.8 mi', color: '#ed1c24', mark: 'MC', detail: 'In stock', address: '4744 South Blvd', coordinates: [-80.8777176, 35.1746978], mapTier: 3 },
   { store: 'Apple SouthPark', price: 829, distance: '39.2 mi', color: '#1d1d1f', mark: '', detail: 'Pickup today', address: '4400 Sharon Rd', coordinates: [-80.831925, 35.1524576], mapTier: 3 },
+  { store: 'Walmart Lincolnton', price: 735, distance: '31.4 mi', color: '#1674ea', mark: '✦', detail: 'Pickup today', address: '306 N Generals Blvd', coordinates: [-81.2409266, 35.483307], mapTier: 3 },
+  { store: 'Best Buy Hickory', price: 742, distance: '53.6 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '1884 Catawba Valley Blvd SE', coordinates: [-81.3099218, 35.7010015], mapTier: 3 },
+  { store: 'Target Hickory', price: 789, distance: '53.5 mi', color: '#d92332', mark: '◎', detail: 'Pickup tomorrow', address: '1910 Catawba Valley Blvd SE', coordinates: [-81.3083741, 35.7001696], mapTier: 3 },
+  { store: 'Walmart Forest City', price: 731, distance: '38.1 mi', color: '#1674ea', mark: '✦', detail: 'In stock', address: '197 Plaza Dr', coordinates: [-81.8995605, 35.3351939], mapTier: 3 },
+  { store: 'Walmart Gaffney', price: 728, distance: '25.7 mi', color: '#1674ea', mark: '✦', detail: 'Pickup today', address: '165 Walton Dr', coordinates: [-81.6659322, 35.0872774], mapTier: 3 },
+  { store: 'Best Buy Spartanburg', price: 746, distance: '54.9 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '110 E Blackstock Rd', coordinates: [-81.9924948, 34.935111], mapTier: 3 },
+  { store: 'Best Buy Rock Hill', price: 741, distance: '37.3 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '1775 Chamberside Dr', coordinates: [-80.9771687, 34.9387534], mapTier: 3 },
+  { store: 'Target Rock Hill', price: 795, distance: '37.1 mi', color: '#d92332', mark: '◎', detail: 'Pickup today', address: '1900 Springsteen Rd', coordinates: [-80.9783659, 34.9385821], mapTier: 3 },
+  { store: 'Best Buy Concord', price: 738, distance: '52.4 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '8111 Concord Mills Blvd', coordinates: [-80.7188018, 35.3684095], mapTier: 3 },
+  { store: 'Target Concord', price: 792, distance: '55.2 mi', color: '#d92332', mark: '◎', detail: 'Pickup tomorrow', address: '6150 Bayfield Pkwy', coordinates: [-80.6792366, 35.4170115], mapTier: 3 },
 ];
 
 const HOME: [number, number] = [-81.3627789, 35.2444756];
@@ -102,7 +112,13 @@ type MapView = { radius: number; count: number };
 function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
+  const selectedOfferRef = useRef(offer);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    selectedOfferRef.current = offer;
+  }, [offer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,19 +167,28 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
           : zoom >= 9.2
             ? { radius: 30, tier: 2 as const }
             : { radius: 45, tier: 3 as const };
-        const visibleStores = markers.filter(entry => entry.offer && (entry.offer.mapTier ?? 1) <= range.tier);
+        const bounds = map.getBounds();
+        const visibleStores = markers.filter(entry => entry.offer?.coordinates && bounds.contains(entry.offer.coordinates));
         markers.forEach(entry => {
           if (!entry.offer) return;
-          const hidden = (entry.offer.mapTier ?? 1) > range.tier;
+          const hidden = !entry.offer.coordinates || !bounds.contains(entry.offer.coordinates);
           entry.element.classList.toggle('marker-hidden', hidden);
           entry.element.hidden = hidden;
           entry.element.setAttribute('aria-hidden', String(hidden));
         });
+        const visibleOffers = visibleStores.flatMap(entry => entry.offer ? [entry.offer] : []);
+        if (visibleOffers.length && !visibleOffers.some(item => item.store === selectedOfferRef.current.store)) {
+          const bestVisibleOffer = visibleOffers.reduce((best, item) => item.price < best.price ? item : best);
+          selectedOfferRef.current = bestVisibleOffer;
+          setOffer(bestVisibleOffer);
+        }
         setView({ radius: range.radius, count: visibleStores.length });
+        setRefreshing(false);
       };
 
       updateStoreRange();
-      map.on('zoomend', updateStoreRange);
+      map.on('movestart', () => setRefreshing(true));
+      map.on('moveend', updateStoreRange);
 
       map.once('load', () => {
         if (!cancelled) setStatus('ready');
@@ -194,13 +219,13 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
     {status === 'error' && <div className="map-loading map-error">Map unavailable. Check your connection.</div>}
     <div className="map-guide">Drag to explore · Scroll or pinch to zoom</div>
     <button className="recenter" onClick={recenter} aria-label="Recenter map on nearby deals">⌖ <span>Recenter</span></button>
-    <div className="sample-badge"><b>{view.count} stores</b><span>within {view.radius} mi · preview</span></div>
+    <div className={`sample-badge ${refreshing ? 'refreshing' : ''}`}><b>{refreshing ? 'Searching area…' : `${view.count} stores`}</b><span>{refreshing ? 'Finding visible retailers' : `about ${view.radius} mi · preview`}</span></div>
   </div>;
 }
 
 function Map({ query, setQuery, offer, setOffer, notify }: any) {
   const [view, setView] = useState<MapView>({ radius: 20, count: 3 });
-  return <section className="page map-page"><div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Best total</button><button>▣ Pickup today</button><button>⌖ {view.radius} mi</button></div></div><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView}/><article className="sheet"><i/><div className="sheet-head"><div><small>{view.count} local · 1 online option</small><h2>Best deals nearby</h2></div><button aria-label="Save selected deal">♡</button></div><div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{offer.store === 'Amazon' ? 'Online' : 'In stock'}</em></span><strong>${offer.price}.00<button onClick={() => notify(`Opening ${offer.store}`)}>View deal ›</button></strong></div><div className="deal-note"><span>✓</span><p><b>Zoom out to expand your search</b><small>More stores appear as the map covers more distance</small></p></div></article></section>;
+  return <section className="page map-page"><div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Best total</button><button>▣ Pickup today</button><button>⌖ ~{view.radius} mi view</button></div></div><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView}/><article className="sheet"><i/><div className="sheet-head"><div><small>{view.count} in this map area · 1 online</small><h2>Deals in this area</h2></div><button aria-label="Save selected deal">♡</button></div><div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{offer.store === 'Amazon' ? 'Online' : 'In stock'}</em></span><strong>${offer.price}.00<button onClick={() => notify(`Opening ${offer.store}`)}>View deal ›</button></strong></div><div className="deal-note"><span>↻</span><p><b>Map area updates automatically</b><small>Move in any direction to discover stores there</small></p></div></article></section>;
 }
 function Saved({ query, setQuery, products, notify }: any) { return <section className="page"><h2>Saved</h2><SearchBox value={query} setValue={setQuery} placeholder="Search saved items"/><div className="segments"><button className="on">Products</button><button>Stores</button></div><div className="summary"><b>♧</b><span><strong>3 price watches</strong><small>We’ll alert you when prices drop.</small></span></div><div className="saved-list">{products.map((p:any) => <article key={p[0]}><i>{p[3]}</i><span><h3>{p[0]}</h3><small>Best price</small><strong>${p[1]}</strong>{p[2] && <em>{p[2]}</em>}<button onClick={() => notify(`Viewing ${p[0]}`)}>View prices ›</button></span><b>♥</b></article>)}</div>{!products.length && <p className="empty">No saved items found.</p>}</section> }
 function Alerts({ notify }: any) { return <section className="page"><h2>Price alerts</h2><article className="featured"><b>↓ Price drop <small>Now •</small></b><h3>Sony 55-inch TV</h3><strong>Now $726 — down $24</strong><p>✦ Walmart · 2.4 mi</p><button onClick={() => notify('Opening price-drop deal')}>View deal ›</button></article><h2 className="subhead">Earlier</h2>{[['◉','AirPods Pro dropped to $189','2h'],['▣','Nintendo Switch OLED is back in stock','Yesterday']].map(a => <button className="alert-row" key={a[1]}><i>{a[0]}</i><b>{a[1]}<small>Walmart · 2.4 mi</small></b><span>{a[2]} ›</span></button>)}</section> }
