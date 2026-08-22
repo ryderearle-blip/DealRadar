@@ -13,7 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Untitled site',
+  title: 'DealRadar — Find it cheaper. Find it closer.',
+  description: 'Compare local and online prices, availability, and distance in one search.',
 };
 
 export default function RootLayout({

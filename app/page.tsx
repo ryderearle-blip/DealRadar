@@ -1,107 +1,49 @@
-const sidebarWidths = [74, 58, 82, 66, 71, 54];
-const articleWidths = [100, 97, 94, 98, 86];
+'use client';
+
+import { useMemo, useState } from 'react';
+
+type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
+const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
+const icons: Record<Tab, string> = { Search: '⌕', Map: '⌖', Saved: '♡', Alerts: '♧', Profile: '○' };
+const offers = [
+  { store: 'Walmart', price: 726, distance: '2.4 mi', color: '#1674ea', mark: '✦', detail: 'Pickup today' },
+  { store: 'Best Buy', price: 748, distance: '8.1 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock' },
+  { store: 'Amazon', price: 749, distance: 'Online', color: '#152033', mark: 'a', detail: 'Free delivery' },
+  { store: 'Target', price: 799, distance: '5.7 mi', color: '#d92332', mark: '◎', detail: 'Limited stock' },
+];
+const products = [
+  ['Sony 55-inch TV', '726', 'Down $24', '▰'],
+  ['Apple AirPods Pro', '189', '', '◉'],
+  ['Nintendo Switch OLED', '299', 'In stock', '▣'],
+];
 
 export default function Home() {
-  return (
-    <main className="fixed inset-0 overflow-hidden bg-[#fbfaf8] text-zinc-900">
-      <header
-        aria-hidden="true"
-        className="grid h-[76px] grid-cols-[1fr_auto_1fr] items-center border-b border-stone-200 bg-white/95 px-6 sm:px-14"
-      >
-        <div className="flex items-center gap-3">
-          <span className="h-9 w-9 rounded-full bg-stone-100" />
-          <span className="h-3.5 w-28 rounded-full bg-stone-100" />
-        </div>
-        <span className="hidden h-9 w-[min(30vw,420px)] rounded-xl bg-stone-100 sm:block" />
-        <div className="flex items-center justify-end gap-3">
-          <span className="hidden h-9 w-9 rounded-full bg-stone-100 sm:block" />
-          <span className="h-9 w-24 rounded-xl bg-stone-100" />
-        </div>
-      </header>
+  const [tab, setTab] = useState<Tab>('Map');
+  const [query, setQuery] = useState('Sony 55-inch TV');
+  const [savedQuery, setSavedQuery] = useState('');
+  const [offer, setOffer] = useState(offers[0]);
+  const [toast, setToast] = useState('');
+  const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 1800); };
+  const filtered = useMemo(() => products.filter(p => p[0].toLowerCase().includes(savedQuery.toLowerCase())), [savedQuery]);
 
-      <div
-        aria-hidden="true"
-        className="grid h-[calc(100%-76px)] grid-cols-[180px_minmax(0,1fr)_260px] gap-10 px-6 pb-24 pt-10 opacity-55 max-lg:grid-cols-[150px_minmax(0,1fr)] max-sm:grid-cols-1 sm:px-14"
-      >
-        <aside className="hidden border-r border-stone-200 pr-7 sm:block">
-          <div className="mb-6 h-2.5 w-16 rounded-full bg-stone-200" />
-          <div className="space-y-4">
-            {sidebarWidths.map((width) => (
-              <div key={width} className="flex items-center gap-3">
-                <span className="h-4 w-4 rounded bg-stone-200" />
-                <span
-                  className="h-2.5 rounded-full bg-stone-200"
-                  style={{ width: `${width}%` }}
-                />
-              </div>
-            ))}
-          </div>
-          <div className="mb-6 mt-9 h-2.5 w-24 rounded-full bg-stone-200" />
-          <div className="space-y-4">
-            {sidebarWidths.slice(0, 3).map((width) => (
-              <span
-                key={width}
-                className="block h-2.5 rounded-full bg-stone-200"
-                style={{ width: `${width}%` }}
-              />
-            ))}
-          </div>
-        </aside>
-
-        <article className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-          <div className="space-y-3">
-            <div className="h-2.5 w-28 rounded-full bg-stone-200" />
-            <div className="h-7 w-4/5 rounded-lg bg-stone-200" />
-            <div className="h-7 w-3/5 rounded-lg bg-stone-200" />
-          </div>
-          <div className="min-h-[240px] flex-1 rounded-2xl bg-stone-200" />
-          <div className="flex items-center gap-3">
-            <span className="h-9 w-9 rounded-full bg-stone-200" />
-            <span className="h-2.5 w-28 rounded-full bg-stone-200" />
-          </div>
-          <div className="space-y-2">
-            {articleWidths.map((width) => (
-              <span
-                key={width}
-                className="block h-2.5 rounded-full bg-stone-200"
-                style={{ width: `${width}%` }}
-              />
-            ))}
-          </div>
-        </article>
-
-        <aside className="space-y-5 max-lg:hidden">
-          {[0, 1].map((card) => (
-            <div
-              key={card}
-              className="space-y-4 rounded-2xl border border-stone-200 bg-white/70 p-6"
-            >
-              <span className="block h-10 w-10 rounded-full bg-stone-200" />
-              <span className="block h-3 w-3/5 rounded-full bg-stone-200" />
-              <span className="block h-2.5 w-full rounded-full bg-stone-200" />
-              <span className="block h-2.5 w-4/5 rounded-full bg-stone-200" />
-              <span className="block h-8 w-24 rounded-lg bg-stone-200" />
-            </div>
-          ))}
-        </aside>
-      </div>
-
-      <section
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        className="absolute left-1/2 top-[clamp(96px,13vh,122px)] w-[min(620px,calc(100%-40px))] -translate-x-1/2 rounded-[18px] border border-stone-200 bg-white/95 px-5 py-5 shadow-[0_18px_50px_rgb(24_24_27/9%)] backdrop-blur-sm"
-      >
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.09em] text-stone-500">
-          Building your site
-        </p>
-        <h1 className="text-xl font-semibold tracking-tight">
-          Your site is taking shape
-        </h1>
-        <p className="mt-1 text-sm text-stone-500">
-          Your first version will appear here automatically when it’s ready.
-        </p>
-      </section>
-    </main>
-  );
+  return <main className="stage"><section className="phone" aria-label="DealRadar prototype">
+    <div className="status"><b>9:41</b><i/><span>▮▮▮ ))) ▰</span></div>
+    <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => notify('Location set to 28086')}>● Kings Mountain, NC 28086⌄</button>}</div><button className="circle">{tab === 'Profile' ? '⚙' : '➤'}</button></header>
+    <div className="content">
+      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')}/>} 
+      {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify}/>} 
+      {tab === 'Saved' && <Saved query={savedQuery} setQuery={setSavedQuery} products={filtered} notify={notify}/>} 
+      {tab === 'Alerts' && <Alerts notify={notify}/>} 
+      {tab === 'Profile' && <Profile notify={notify}/>} 
+    </div>
+    <nav>{tabs.map(item => <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}><b>{icons[item]}</b>{item}</button>)}</nav>
+    {toast && <div className="toast">{toast}</div>}
+  </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Sample offers • Kings Mountain, NC</small></aside></main>;
 }
+
+function Search({ query, setQuery, open }: any) { return <section className="page search-page"><SearchBox value={query} setValue={setQuery} placeholder="What are you shopping for?"/><p className="label">RECENT SEARCH</p><button className="pill" onClick={open}>◷ Sony 55-inch TV</button><h2>Popular near you</h2><div className="categories">{[['▰','TVs'],['▱','Laptops'],['◉','Headphones'],['▣','Gaming']].map(x => <button key={x[1]} onClick={open}><b>{x[0]}</b><span>{x[1]}</span><i>›</i></button>)}</div><h2>Trending deals</h2><button className="trend" onClick={open}><i>SONY</i><span><b>Sony 55-inch TV</b><small>From</small><strong>$726</strong><small>4 stores</small></span><em>›</em></button></section> }
+function SearchBox({ value, setValue, placeholder }: any) { return <label className="searchbox"><b>⌕</b><input value={value} onChange={e => setValue(e.target.value)} placeholder={placeholder}/></label> }
+function Map({ query, setQuery, offer, setOffer, notify }: any) { return <section className="page map-page"><div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Best total</button><button>▣ Pickup today</button><button>⌖ 10 mi</button></div></div><div className="map"><span className="road r1"/><span className="road r2"/><span className="road r3"/><strong className="city">Kings<br/>Mountain</strong><i className="home">⌂</i>{offers.map((x,i) => <button key={x.store} className={`pin p${i} ${x.store === offer.store ? 'chosen':''}`} onClick={() => setOffer(x)} style={{'--pin':x.color} as React.CSSProperties}><span>{x.mark}</span><b>${x.price}</b></button>)}</div><article className="sheet"><i/><div className="sheet-head"><h2>Best deals nearby</h2><button>♡</button></div><div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><em>In stock</em></span><strong>${offer.price}.00<button onClick={() => notify(`Opening ${offer.store}`)}>View deal ›</button></strong></div></article></section> }
+function Saved({ query, setQuery, products, notify }: any) { return <section className="page"><h2>Saved</h2><SearchBox value={query} setValue={setQuery} placeholder="Search saved items"/><div className="segments"><button className="on">Products</button><button>Stores</button></div><div className="summary"><b>♧</b><span><strong>3 price watches</strong><small>We’ll alert you when prices drop.</small></span></div><div className="saved-list">{products.map((p:any) => <article key={p[0]}><i>{p[3]}</i><span><h3>{p[0]}</h3><small>Best price</small><strong>${p[1]}</strong>{p[2] && <em>{p[2]}</em>}<button onClick={() => notify(`Viewing ${p[0]}`)}>View prices ›</button></span><b>♥</b></article>)}</div>{!products.length && <p className="empty">No saved items found.</p>}</section> }
+function Alerts({ notify }: any) { return <section className="page"><h2>Price alerts</h2><article className="featured"><b>↓ Price drop <small>Now •</small></b><h3>Sony 55-inch TV</h3><strong>Now $726 — down $24</strong><p>✦ Walmart · 2.4 mi</p><button onClick={() => notify('Opening price-drop deal')}>View deal ›</button></article><h2 className="subhead">Earlier</h2>{[['◉','AirPods Pro dropped to $189','2h'],['▣','Nintendo Switch OLED is back in stock','Yesterday']].map(a => <button className="alert-row" key={a[1]}><i>{a[0]}</i><b>{a[1]}<small>Walmart · 2.4 mi</small></b><span>{a[2]} ›</span></button>)}</section> }
+function Profile({ notify }: any) { const [a,setA]=useState(true); const [b,setB]=useState(true); return <section className="page"><h2>Profile</h2><article className="identity"><i>JD</i><span><h3>Jordan Davis</h3><button onClick={() => notify('Edit profile selected')}>Edit profile ›</button></span></article><h3 className="section-title">Shopping preferences</h3><div className="settings">{[['●','Home location','Kings Mountain, NC 28086'],['⌾','Search radius','10 miles'],['▣','Preferred fulfillment','Pickup & delivery']].map(x => <button key={x[1]}><i>{x[0]}</i><span><b>{x[1]}</b><small>{x[2]}</small></span><em>›</em></button>)}</div><h3 className="section-title">Notifications</h3><div className="settings toggles"><label><i>♧</i><b>Price-drop alerts</b><input type="checkbox" checked={a} onChange={e=>setA(e.target.checked)}/><span/></label><label><i>▣</i><b>Back-in-stock alerts</b><input type="checkbox" checked={b} onChange={e=>setB(e.target.checked)}/><span/></label></div><button className="privacy">♢ <b>Privacy & data</b><span>›</span></button></section> }
