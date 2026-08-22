@@ -1,0 +1,186 @@
+.map-shell {
+  position: relative;
+  flex: 1;
+  min-height: 286px;
+  overflow: hidden;
+  background: #e9eef1;
+}
+
+.map-shell > .map {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  background: #e9eef1;
+}
+
+.map canvas { outline: 0; }
+
+.map-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #eef2f2;
+  color: #445364;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.map-loading span {
+  width: 19px;
+  height: 19px;
+  border: 2px solid #b8c4cd;
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: map-spin .8s linear infinite;
+}
+
+.map-error { background: #f5f1ee; color: #7a3b34; }
+@keyframes map-spin { to { transform: rotate(360deg); } }
+
+.map-guide {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  z-index: 2;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 7px 11px;
+  border: 1px solid #dce3e7;
+  border-radius: 18px;
+  background: #fffffff2;
+  color: #415164;
+  box-shadow: 0 5px 15px #172b3c18;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.sample-badge {
+  position: absolute;
+  left: 10px;
+  bottom: 30px;
+  z-index: 2;
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: #102036dd;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .03em;
+  pointer-events: none;
+}
+
+.recenter {
+  position: absolute;
+  right: 10px;
+  bottom: 32px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #dce3e7;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  color: var(--blue);
+  box-shadow: 0 4px 14px #172b3c22;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.map-home-marker {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 0 0 8px #0d70e826, 0 4px 12px #172b3c33;
+  font-style: normal;
+}
+
+.map-home-marker span { font-size: 16px; line-height: 1; }
+
+.price-marker {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  filter: drop-shadow(0 5px 7px #18212c40);
+  transition: transform .16s ease;
+  transform-origin: center bottom;
+}
+
+.price-marker > span {
+  min-width: 43px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 3px solid #fff;
+  border-radius: 11px 11px 4px 4px;
+  background: var(--marker-color);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: -.03em;
+}
+
+.price-marker > strong {
+  margin-top: -2px;
+  padding: 4px 8px;
+  border: 2px solid #fff;
+  border-radius: 9px;
+  background: #102036;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.price-marker::after {
+  content: '';
+  width: 0;
+  height: 0;
+  margin-top: -1px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid #102036;
+}
+
+.price-marker:hover,
+.price-marker:focus-visible,
+.price-marker.chosen { z-index: 5 !important; transform: scale(1.13); }
+.price-marker.chosen > strong { background: var(--green); }
+.price-marker.chosen::after { border-top-color: var(--green); }
+
+.maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid #dce3e7 !important;
+  border-radius: 11px !important;
+  box-shadow: 0 5px 15px #172b3c1f !important;
+}
+
+.maplibregl-ctrl-group button { width: 34px !important; height: 34px !important; }
+.maplibregl-ctrl-scale { border-color: #445364 !important; background: #ffffffbf !important; color: #2c3948 !important; font-size: 9px !important; }
+.maplibregl-ctrl-attrib { font-size: 9px !important; }
+.sheet-head > div > small { display: block; margin-bottom: 2px; color: var(--green); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.deal .address { margin-top: 2px; color: #7a8795; font-size: 10px; }
+
+.deal-note { display: flex; align-items: center; gap: 9px; margin-top: 9px; padding: 0 5px; }
+.deal-note > span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #e7f7ed; color: var(--green); font-size: 12px; font-weight: 900; }
+.deal-note p { margin: 0; font-size: 11px; }
+.deal-note small { display: block; color: var(--muted); font-size: 9px; }
+
+@media (min-width: 900px) {
+  .map-shell { grid-column: 1; grid-row: 2; min-height: 0; }
+  .map-guide { top: 14px; font-size: 11px; }
+  .recenter { bottom: 38px; right: 14px; }
+  .sample-badge { bottom: 36px; left: 14px; }
+}

@@ -1,16 +1,65 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
 const icons: Record<Tab, string> = { Search: '⌕', Map: '⌖', Saved: '♡', Alerts: '♧', Profile: '○' };
-const offers = [
-  { store: 'Walmart', price: 726, distance: '2.4 mi', color: '#1674ea', mark: '✦', detail: 'Pickup today' },
-  { store: 'Best Buy', price: 748, distance: '8.1 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock' },
-  { store: 'Amazon', price: 749, distance: 'Online', color: '#152033', mark: 'a', detail: 'Free delivery' },
-  { store: 'Target', price: 799, distance: '5.7 mi', color: '#d92332', mark: '◎', detail: 'Limited stock' },
+type Offer = {
+  store: string;
+  price: number;
+  distance: string;
+  color: string;
+  mark: string;
+  detail: string;
+  address: string;
+  coordinates?: [number, number];
+};
+
+const offers: Offer[] = [
+  { store: 'Walmart', price: 726, distance: '2.4 mi', color: '#1674ea', mark: '✦', detail: 'Pickup today', address: '1011 Shelby Rd', coordinates: [-81.3625539, 35.2384283] },
+  { store: 'Best Buy', price: 748, distance: '14.8 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '3050 E Franklin Blvd', coordinates: [-81.122254, 35.260018] },
+  { store: 'Amazon', price: 749, distance: 'Online', color: '#152033', mark: 'a', detail: 'Free delivery', address: 'Ships to 28086' },
+  { store: 'Target', price: 799, distance: '14.1 mi', color: '#d92332', mark: '◎', detail: 'Limited stock', address: '425 Cox Rd', coordinates: [-81.1388478, 35.2645694] },
 ];
+
+const HOME: [number, number] = [-81.3627789, 35.2444756];
+const MAPLIBRE_VERSION = '5.24.0';
+let mapLibraryPromise: Promise<any> | null = null;
+
+function loadMapLibrary() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Map requires a browser'));
+  const mapWindow = window as typeof window & { maplibregl?: any };
+  if (mapWindow.maplibregl) return Promise.resolve(mapWindow.maplibregl);
+  if (mapLibraryPromise) return mapLibraryPromise;
+
+  mapLibraryPromise = new Promise((resolve, reject) => {
+    if (!document.querySelector('link[data-dealradar-map]')) {
+      const stylesheet = document.createElement('link');
+      stylesheet.rel = 'stylesheet';
+      stylesheet.href = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
+      stylesheet.dataset.dealradarMap = 'true';
+      document.head.appendChild(stylesheet);
+    }
+
+    const existing = document.querySelector<HTMLScriptElement>('script[data-dealradar-map]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(mapWindow.maplibregl), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Map library failed to load')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
+    script.async = true;
+    script.dataset.dealradarMap = 'true';
+    script.onload = () => resolve(mapWindow.maplibregl);
+    script.onerror = () => reject(new Error('Map library failed to load'));
+    document.head.appendChild(script);
+  });
+
+  return mapLibraryPromise;
+}
 const products = [
   ['Sony 55-inch TV', '726', 'Down $24', '▰'],
   ['Apple AirPods Pro', '189', '', '◉'],
@@ -43,7 +92,85 @@ export default function Home() {
 
 function Search({ query, setQuery, open }: any) { return <section className="page search-page"><SearchBox value={query} setValue={setQuery} placeholder="What are you shopping for?"/><p className="label">RECENT SEARCH</p><button className="pill" onClick={open}>◷ Sony 55-inch TV</button><h2>Popular near you</h2><div className="categories">{[['▰','TVs'],['▱','Laptops'],['◉','Headphones'],['▣','Gaming']].map(x => <button key={x[1]} onClick={open}><b>{x[0]}</b><span>{x[1]}</span><i>›</i></button>)}</div><h2>Trending deals</h2><button className="trend" onClick={open}><i>SONY</i><span><b>Sony 55-inch TV</b><small>From</small><strong>$726</strong><small>4 stores</small></span><em>›</em></button></section> }
 function SearchBox({ value, setValue, placeholder }: any) { return <label className="searchbox"><b aria-hidden="true">⌕</b><input aria-label={placeholder || 'Search products'} value={value} onChange={e => setValue(e.target.value)} placeholder={placeholder}/></label> }
-function Map({ query, setQuery, offer, setOffer, notify }: any) { return <section className="page map-page"><div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Best total</button><button>▣ Pickup today</button><button>⌖ 10 mi</button></div></div><div className="map"><span className="road r1"/><span className="road r2"/><span className="road r3"/><strong className="city">Kings<br/>Mountain</strong><i className="home">⌂</i>{offers.map((x,i) => <button key={x.store} aria-label={`Select ${x.store} offer for $${x.price}`} className={`pin p${i} ${x.store === offer.store ? 'chosen':''}`} onClick={() => setOffer(x)} style={{'--pin':x.color} as React.CSSProperties}><span>{x.mark}</span><b>${x.price}</b></button>)}</div><article className="sheet"><i/><div className="sheet-head"><h2>Best deals nearby</h2><button aria-label="Save selected deal">♡</button></div><div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><em>In stock</em></span><strong>${offer.price}.00<button onClick={() => notify(`Opening ${offer.store}`)}>View deal ›</button></strong></div></article></section> }
+function InteractiveMap({ offer, setOffer }: { offer: Offer; setOffer: (offer: Offer) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    let map: any;
+    const markers: any[] = [];
+
+    loadMapLibrary().then((maplibregl) => {
+      if (cancelled || !containerRef.current) return;
+
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: 'https://tiles.openfreemap.org/styles/liberty',
+        center: [-81.242, 35.251],
+        zoom: 10.35,
+        minZoom: 8,
+        maxZoom: 18,
+        attributionControl: false,
+      });
+      mapRef.current = map;
+      map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), 'top-right');
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+      map.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: 'imperial' }), 'bottom-left');
+
+      const home = document.createElement('div');
+      home.className = 'map-home-marker';
+      home.setAttribute('aria-label', 'Home area: Kings Mountain, NC 28086');
+      home.innerHTML = '<span>⌂</span>';
+      markers.push(new maplibregl.Marker({ element: home, anchor: 'center' }).setLngLat(HOME).addTo(map));
+
+      offers.filter(item => item.coordinates).forEach((item) => {
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = 'price-marker';
+        marker.dataset.store = item.store;
+        marker.setAttribute('aria-label', `${item.store}, $${item.price}, ${item.distance} away`);
+        marker.style.setProperty('--marker-color', item.color);
+        marker.innerHTML = `<span>${item.mark}</span><strong>$${item.price}</strong>`;
+        marker.addEventListener('click', () => setOffer(item));
+        markers.push(new maplibregl.Marker({ element: marker, anchor: 'bottom' }).setLngLat(item.coordinates!).addTo(map));
+      });
+
+      map.once('load', () => {
+        if (!cancelled) setStatus('ready');
+      });
+    }).catch(() => {
+      if (!cancelled) setStatus('error');
+    });
+
+    return () => {
+      cancelled = true;
+      markers.forEach(marker => marker.remove());
+      map?.remove();
+      mapRef.current = null;
+    };
+  }, [setOffer]);
+
+  useEffect(() => {
+    containerRef.current?.querySelectorAll<HTMLElement>('.price-marker').forEach(marker => {
+      marker.classList.toggle('chosen', marker.dataset.store === offer.store);
+    });
+  }, [offer.store, status]);
+
+  const recenter = () => mapRef.current?.easeTo({ center: [-81.242, 35.251], zoom: 10.35, duration: 700 });
+
+  return <div className="map-shell">
+    <div ref={containerRef} className="map" aria-label="Interactive map of DealRadar offers near Kings Mountain" />
+    {status === 'loading' && <div className="map-loading"><span />Loading detailed map…</div>}
+    {status === 'error' && <div className="map-loading map-error">Map unavailable. Check your connection.</div>}
+    <div className="map-guide">Drag to explore · Scroll or pinch to zoom</div>
+    <button className="recenter" onClick={recenter} aria-label="Recenter map on nearby deals">⌖ <span>Recenter</span></button>
+    <div className="sample-badge">Preview prices</div>
+  </div>;
+}
+
+function Map({ query, setQuery, offer, setOffer, notify }: any) { return <section className="page map-page"><div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Best total</button><button>▣ Pickup today</button><button>⌖ 20 mi</button></div></div><InteractiveMap offer={offer} setOffer={setOffer}/><article className="sheet"><i/><div className="sheet-head"><div><small>{offers.length} price options</small><h2>Best deals nearby</h2></div><button aria-label="Save selected deal">♡</button></div><div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{offer.store === 'Amazon' ? 'Online' : 'In stock'}</em></span><strong>${offer.price}.00<button onClick={() => notify(`Opening ${offer.store}`)}>View deal ›</button></strong></div><div className="deal-note"><span>✓</span><p><b>Best total price</b><small>Price, availability, and distance in one view</small></p></div></article></section> }
 function Saved({ query, setQuery, products, notify }: any) { return <section className="page"><h2>Saved</h2><SearchBox value={query} setValue={setQuery} placeholder="Search saved items"/><div className="segments"><button className="on">Products</button><button>Stores</button></div><div className="summary"><b>♧</b><span><strong>3 price watches</strong><small>We’ll alert you when prices drop.</small></span></div><div className="saved-list">{products.map((p:any) => <article key={p[0]}><i>{p[3]}</i><span><h3>{p[0]}</h3><small>Best price</small><strong>${p[1]}</strong>{p[2] && <em>{p[2]}</em>}<button onClick={() => notify(`Viewing ${p[0]}`)}>View prices ›</button></span><b>♥</b></article>)}</div>{!products.length && <p className="empty">No saved items found.</p>}</section> }
 function Alerts({ notify }: any) { return <section className="page"><h2>Price alerts</h2><article className="featured"><b>↓ Price drop <small>Now •</small></b><h3>Sony 55-inch TV</h3><strong>Now $726 — down $24</strong><p>✦ Walmart · 2.4 mi</p><button onClick={() => notify('Opening price-drop deal')}>View deal ›</button></article><h2 className="subhead">Earlier</h2>{[['◉','AirPods Pro dropped to $189','2h'],['▣','Nintendo Switch OLED is back in stock','Yesterday']].map(a => <button className="alert-row" key={a[1]}><i>{a[0]}</i><b>{a[1]}<small>Walmart · 2.4 mi</small></b><span>{a[2]} ›</span></button>)}</section> }
 function Profile({ notify }: any) { const [a,setA]=useState(true); const [b,setB]=useState(true); return <section className="page"><h2>Profile</h2><article className="identity"><i>JD</i><span><h3>Jordan Davis</h3><button onClick={() => notify('Edit profile selected')}>Edit profile ›</button></span></article><h3 className="section-title">Shopping preferences</h3><div className="settings">{[['●','Home location','Kings Mountain, NC 28086'],['⌾','Search radius','10 miles'],['▣','Preferred fulfillment','Pickup & delivery']].map(x => <button key={x[1]}><i>{x[0]}</i><span><b>{x[1]}</b><small>{x[2]}</small></span><em>›</em></button>)}</div><h3 className="section-title">Notifications</h3><div className="settings toggles"><label><i>♧</i><b>Price-drop alerts</b><input type="checkbox" checked={a} onChange={e=>setA(e.target.checked)}/><span/></label><label><i>▣</i><b>Back-in-stock alerts</b><input type="checkbox" checked={b} onChange={e=>setB(e.target.checked)}/><span/></label></div><button className="privacy">♢ <b>Privacy & data</b><span>›</span></button></section> }
