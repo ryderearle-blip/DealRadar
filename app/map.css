@@ -74,6 +74,10 @@
   pointer-events: none;
 }
 
+.sample-badge b,
+.sample-badge span { display: block; }
+.sample-badge span { margin-top: 1px; color: #dce6ef; font-size: 8px; font-weight: 600; }
+
 .recenter {
   position: absolute;
   right: 10px;
@@ -159,6 +163,7 @@
 .price-marker.chosen { z-index: 5 !important; transform: scale(1.13); }
 .price-marker.chosen > strong { background: var(--green); }
 .price-marker.chosen::after { border-top-color: var(--green); }
+.price-marker.marker-hidden { opacity: 0 !important; pointer-events: none; }
 
 .maplibregl-ctrl-group {
   overflow: hidden;
