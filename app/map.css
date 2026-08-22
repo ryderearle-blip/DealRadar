@@ -166,7 +166,12 @@
 .price-marker.chosen > strong { background: var(--green); }
 .price-marker.chosen::after { border-top-color: var(--green); }
 .price-marker.marker-hidden { opacity: 0 !important; pointer-events: none; }
-.price-marker.preview-marker > span { background: linear-gradient(145deg,var(--marker-color),#102036); border-style: dashed; }
+.price-marker.live-store-marker > span { background: linear-gradient(145deg,var(--marker-color),#102036); }
+.price-marker.no-price > strong { background: #435064; font-size: 10px; }
+.price-marker.no-price::after { border-top-color: #435064; }
+.deal > strong.no-price { color: #435064; font-size: 13px; }
+.area-empty { display: grid; gap: 4px; border: 1px dashed #b8c4cd; border-radius: 16px; padding: 18px; background: #f8fafb; color: #435064; text-align: center; }
+.area-empty span { color: var(--muted); font-size: 11px; }
 
 .maplibregl-ctrl-group {
   overflow: hidden;

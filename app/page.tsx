@@ -8,7 +8,7 @@ const icons: Record<Tab, string> = { Search: '⌕', Map: '⌖', Saved: '♡', Al
 type Offer = {
   id?: string;
   store: string;
-  price: number;
+  price: number | null;
   distance: string;
   color: string;
   mark: string;
@@ -40,27 +40,6 @@ const offers: Offer[] = [
 ];
 
 const HOME: [number, number] = [-81.3627789, 35.2444756];
-const globalPreviewOffers: Offer[] = [
-  ['New York', -74.006, 40.7128, 739], ['Los Angeles', -118.2437, 34.0522, 749],
-  ['Chicago', -87.6298, 41.8781, 729], ['Toronto', -79.3832, 43.6532, 755],
-  ['Mexico City', -99.1332, 19.4326, 719], ['São Paulo', -46.6333, -23.5505, 735],
-  ['Buenos Aires', -58.3816, -34.6037, 742], ['London', -0.1276, 51.5072, 759],
-  ['Paris', 2.3522, 48.8566, 754], ['Lagos', 3.3792, 6.5244, 721],
-  ['Cairo', 31.2357, 30.0444, 744], ['Johannesburg', 28.0473, -26.2041, 728],
-  ['Dubai', 55.2708, 25.2048, 768], ['Mumbai', 72.8777, 19.076, 732],
-  ['Singapore', 103.8198, 1.3521, 746], ['Tokyo', 139.6917, 35.6895, 751],
-  ['Sydney', 151.2093, -33.8688, 763],
-].map(([city, lng, lat, price]) => ({
-  id: `global-preview-${city}`,
-  store: `Tech Market · ${city}`,
-  price: Number(price),
-  distance: 'In this map area',
-  color: '#6d4aff',
-  mark: 'DR',
-  detail: 'Preview listing',
-  address: `${city} · retailer feed pending`,
-  coordinates: [Number(lng), Number(lat)] as [number, number],
-}));
 const MAPLIBRE_VERSION = '5.24.0';
 let mapLibraryPromise: Promise<any> | null = null;
 
@@ -137,6 +116,7 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
   const selectedOfferRef = useRef(offer);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [refreshing, setRefreshing] = useState(false);
+  const [needsZoom, setNeedsZoom] = useState(false);
 
   useEffect(() => {
     selectedOfferRef.current = offer;
@@ -146,7 +126,10 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
     let cancelled = false;
     let map: any;
     const markers: { marker: any; element: HTMLElement; offer?: Offer }[] = [];
-    let previewMarkers: { marker: any; element: HTMLElement; offer?: Offer }[] = [];
+    let liveMarkers: { marker: any; element: HTMLElement; offer?: Offer }[] = [];
+    let searchController: AbortController | null = null;
+    let refreshTimer = 0;
+    const storeCache = new globalThis.Map<string, Offer[]>();
 
     loadMapLibrary().then((maplibregl) => {
       if (cancelled || !containerRef.current) return;
@@ -156,8 +139,9 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
         style: 'https://tiles.openfreemap.org/styles/liberty',
         center: [-81.242, 35.251],
         zoom: 10.35,
-        minZoom: 2.2,
+        minZoom: 3.4,
         maxZoom: 18,
+        maxBounds: [[-171, 18], [-66, 72]],
         renderWorldCopies: false,
         attributionControl: false,
       });
@@ -172,14 +156,20 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
       home.innerHTML = '<span>⌂</span>';
       markers.push({ marker: new maplibregl.Marker({ element: home, anchor: 'center' }).setLngLat(HOME).addTo(map), element: home });
 
-      const createOfferMarker = (item: Offer, preview = false) => {
+      const createOfferMarker = (item: Offer, live = false) => {
         const marker = document.createElement('button');
         marker.type = 'button';
-        marker.className = `price-marker${preview ? ' preview-marker' : ''}`;
+        marker.className = `price-marker${live ? ' live-store-marker' : ''}${item.price === null ? ' no-price' : ''}`;
         marker.dataset.offerId = item.id ?? item.store;
-        marker.setAttribute('aria-label', `${item.store}, $${item.price}, ${item.distance}`);
+        const priceLabel = item.price === null ? 'price feed unavailable' : `$${item.price}`;
+        marker.setAttribute('aria-label', `${item.store}, ${priceLabel}, ${item.distance}`);
         marker.style.setProperty('--marker-color', item.color);
-        marker.innerHTML = `<span>${item.mark}</span><strong>$${item.price}</strong>`;
+        const brand = document.createElement('span');
+        brand.textContent = item.mark;
+        const price = document.createElement('strong');
+        price.textContent = item.price === null ? 'Store' : `$${item.price}`;
+        marker.appendChild(brand);
+        marker.appendChild(price);
         marker.addEventListener('click', () => setOffer(item));
         return { marker: new maplibregl.Marker({ element: marker, anchor: 'bottom' }).setLngLat(item.coordinates!).addTo(map), element: marker, offer: item };
       };
@@ -188,20 +178,21 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
         markers.push(createOfferMarker(item));
       });
 
-      const updateStoreRange = () => {
+      const getRadius = () => {
         const zoom = map.getZoom();
-        const radius = zoom >= 10.2 ? 20
+        return zoom >= 10.2 ? 20
           : zoom >= 9.2 ? 30
             : zoom >= 8.2 ? 45
               : zoom >= 7 ? 80
                 : zoom >= 5.5 ? 250
                   : zoom >= 4 ? 600
                     : 1500;
-        const bounds = map.getBounds();
-        previewMarkers.forEach(entry => entry.marker.remove());
-        previewMarkers = [];
+      };
 
+      const updateVisibleStores = () => {
+        const bounds = map.getBounds();
         const visibleStores = markers.filter(entry => entry.offer?.coordinates && bounds.contains(entry.offer.coordinates));
+        const visibleLiveStores = liveMarkers.filter(entry => entry.offer?.coordinates && bounds.contains(entry.offer.coordinates));
         markers.forEach(entry => {
           if (!entry.offer) return;
           const hidden = !entry.offer.coordinates || !bounds.contains(entry.offer.coordinates);
@@ -209,58 +200,125 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
           entry.element.hidden = hidden;
           entry.element.setAttribute('aria-hidden', String(hidden));
         });
+        liveMarkers.forEach(entry => {
+          if (!entry.offer) return;
+          const hidden = !entry.offer.coordinates || !bounds.contains(entry.offer.coordinates);
+          entry.element.hidden = hidden;
+          entry.element.setAttribute('aria-hidden', String(hidden));
+        });
 
-        const center = map.getCenter();
-        const outsideHomeRegion = Math.abs(center.lng - HOME[0]) > .35 || Math.abs(center.lat - HOME[1]) > .28 || zoom < 7;
-        const previewCount = outsideHomeRegion && zoom >= 7 ? Math.max(0, 5 - visibleStores.length) : 0;
-        const previewNames = ['Tech Market', 'Device Depot', 'Value Electronics', 'Home AV', 'Digital Outlet', 'DealMart'];
-        const previewColors = ['#6d4aff', '#087e8b', '#ec6b2d', '#3a7d44', '#bd3f76', '#5b6472'];
-        const positions = [[.35,.34],[.50,.30],[.65,.38],[.39,.63],[.54,.68],[.67,.59]];
-        const canvas = map.getCanvas();
-        const zoneKey = `${Math.round(center.lng * 10)}-${Math.round(center.lat * 10)}-${Math.floor(zoom)}`;
-
-        for (let index = 0; index < previewCount; index += 1) {
-          const [x, y] = positions[index];
-          const location = map.unproject([canvas.clientWidth * x, canvas.clientHeight * y]);
-          const seed = Math.abs(Math.round(location.lng * 997 + location.lat * 991 + index * 47));
-          const previewOffer: Offer = {
-            id: `preview-${zoneKey}-${index}`,
-            store: previewNames[index],
-            price: 699 + (seed % 101),
-            distance: 'In this map area',
-            color: previewColors[index],
-            mark: 'DR',
-            detail: 'Preview listing',
-            address: 'Preview location · retailer feed pending',
-            coordinates: [location.lng, location.lat],
-          };
-          previewMarkers.push(createOfferMarker(previewOffer, true));
-        }
-
-        if (zoom < 7) {
-          globalPreviewOffers
-            .filter(item => item.coordinates && bounds.contains(item.coordinates))
-            .forEach(item => previewMarkers.push(createOfferMarker(item, true)));
-        }
-
-        const allVisibleStores = [...visibleStores, ...previewMarkers];
+        const allVisibleStores = [...visibleStores, ...visibleLiveStores];
         const visibleOffers = allVisibleStores.flatMap(entry => entry.offer ? [entry.offer] : []);
         const selectedId = selectedOfferRef.current.id ?? selectedOfferRef.current.store;
         if (visibleOffers.length && !visibleOffers.some(item => (item.id ?? item.store) === selectedId)) {
-          const bestVisibleOffer = visibleOffers.reduce((best, item) => item.price < best.price ? item : best);
+          const pricedOffers = visibleOffers.filter(item => item.price !== null);
+          const bestVisibleOffer = pricedOffers.length
+            ? pricedOffers.reduce((best, item) => Number(item.price) < Number(best.price) ? item : best)
+            : visibleOffers[0];
           selectedOfferRef.current = bestVisibleOffer;
           setOffer(bestVisibleOffer);
         }
-        setView({ radius, count: allVisibleStores.length });
-        setRefreshing(false);
+        setView({ radius: getRadius(), count: allVisibleStores.length });
       };
 
-      updateStoreRange();
+      const storeVisual = (name: string) => {
+        const normalized = name.toLowerCase();
+        if (normalized.includes('best buy')) return { mark: 'BEST', color: '#f4ce12' };
+        if (normalized.includes('target')) return { mark: '◎', color: '#d92332' };
+        if (normalized.includes('walmart')) return { mark: '✦', color: '#1674ea' };
+        if (normalized.includes('gamestop')) return { mark: 'GS', color: '#d21f2b' };
+        if (normalized.includes('apple')) return { mark: '', color: '#1d1d1f' };
+        const mark = name.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
+        return { mark: mark || 'S', color: '#176b73' };
+      };
+
+      const refreshRealStores = async () => {
+        if (cancelled) return;
+        const zoom = map.getZoom();
+        searchController?.abort();
+
+        if (zoom < 9) {
+          liveMarkers.forEach(entry => entry.marker.remove());
+          liveMarkers = [];
+          setNeedsZoom(true);
+          setRefreshing(false);
+          updateVisibleStores();
+          return;
+        }
+
+        setNeedsZoom(false);
+        setRefreshing(true);
+        const bounds = map.getBounds();
+        const south = Math.max(18, bounds.getSouth());
+        const west = Math.max(-171, bounds.getWest());
+        const north = Math.min(72, bounds.getNorth());
+        const east = Math.min(-66, bounds.getEast());
+        const cacheKey = [south, west, north, east].map(value => value.toFixed(2)).join(':');
+
+        try {
+          let realStores = storeCache.get(cacheKey);
+          if (!realStores) {
+            const query = `[out:json][timeout:15];area["ISO3166-1"="US"][admin_level=2]->.us;nwr["shop"~"^(electronics|department_store|computer|appliance|video_games)$"](area.us)(${south.toFixed(5)},${west.toFixed(5)},${north.toFixed(5)},${east.toFixed(5)});out center 35;`;
+            searchController = new AbortController();
+            const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`, {
+              signal: searchController.signal,
+              headers: { Accept: 'application/json' },
+            });
+            if (!response.ok) throw new Error('Store search unavailable');
+            const data = await response.json() as { elements?: any[] };
+            realStores = (data.elements ?? []).flatMap((element: any) => {
+              const tags = element.tags ?? {};
+              const name = tags.name || tags.brand;
+              const lat = element.lat ?? element.center?.lat;
+              const lng = element.lon ?? element.center?.lon;
+              if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+              const duplicate = offers.some(item => item.coordinates && item.store.toLowerCase().includes(String(name).toLowerCase()) && Math.abs(item.coordinates[0] - lng) < .01 && Math.abs(item.coordinates[1] - lat) < .01);
+              if (duplicate) return [];
+              const visual = storeVisual(String(name));
+              const streetAddress = [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' ');
+              const locality = [tags['addr:city'], tags['addr:state']].filter(Boolean).join(', ');
+              return [{
+                id: `osm-${element.type}-${element.id}`,
+                store: String(name),
+                price: null,
+                distance: 'Visible map area',
+                color: visual.color,
+                mark: visual.mark,
+                detail: 'Price feed not connected',
+                address: [streetAddress, locality].filter(Boolean).join(' · ') || 'Mapped business location',
+                coordinates: [Number(lng), Number(lat)] as [number, number],
+              } satisfies Offer];
+            });
+            storeCache.set(cacheKey, realStores);
+          }
+
+          if (cancelled) return;
+          liveMarkers.forEach(entry => entry.marker.remove());
+          liveMarkers = (realStores ?? []).map((item: Offer) => createOfferMarker(item, true));
+          updateVisibleStores();
+          setRefreshing(false);
+        } catch (error) {
+          if ((error as Error).name === 'AbortError') return;
+          if (!cancelled) {
+            updateVisibleStores();
+            setRefreshing(false);
+          }
+        }
+      };
+
+      const scheduleRefresh = () => {
+        window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(refreshRealStores, 320);
+      };
+
       map.on('movestart', () => setRefreshing(true));
-      map.on('moveend', updateStoreRange);
+      map.on('moveend', scheduleRefresh);
 
       map.once('load', () => {
-        if (!cancelled) setStatus('ready');
+        if (!cancelled) {
+          setStatus('ready');
+          refreshRealStores();
+        }
       });
     }).catch(() => {
       if (!cancelled) setStatus('error');
@@ -268,8 +326,10 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
 
     return () => {
       cancelled = true;
+      window.clearTimeout(refreshTimer);
+      searchController?.abort();
       markers.forEach(entry => entry.marker.remove());
-      previewMarkers.forEach(entry => entry.marker.remove());
+      liveMarkers.forEach(entry => entry.marker.remove());
       map?.remove();
       mapRef.current = null;
     };
@@ -279,7 +339,7 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
     containerRef.current?.querySelectorAll<HTMLElement>('.price-marker').forEach(marker => {
       marker.classList.toggle('chosen', marker.dataset.offerId === (offer.id ?? offer.store));
     });
-  }, [offer.store, status]);
+  }, [offer.id, offer.store, status]);
 
   const recenter = () => mapRef.current?.easeTo({ center: [-81.242, 35.251], zoom: 10.35, duration: 700 });
 
@@ -289,13 +349,13 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
     {status === 'error' && <div className="map-loading map-error">Map unavailable. Check your connection.</div>}
     <div className="map-guide">Drag to explore · Scroll or pinch to zoom</div>
     <button className="recenter" onClick={recenter} aria-label="Recenter map on nearby deals">⌖ <span>Recenter</span></button>
-    <div className={`sample-badge ${refreshing ? 'refreshing' : ''}`}><b>{refreshing ? 'Searching area…' : `${view.count} stores`}</b><span>{refreshing ? 'Finding visible retailers' : `about ${view.radius} mi · preview`}</span></div>
+    <div className={`sample-badge ${refreshing ? 'refreshing' : ''}`}><b>{refreshing ? 'Searching area…' : needsZoom ? 'Zoom in for stores' : `${view.count} real stores`}</b><span>{refreshing ? 'Checking mapped retailers' : needsZoom ? 'Real locations load closer' : 'U.S. mapped locations only'}</span></div>
   </div>;
 }
 
 function Map({ query, setQuery, offer, setOffer, notify }: any) {
   const [view, setView] = useState<MapView>({ radius: 20, count: 3 });
-  return <section className="page map-page"><div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Best total</button><button>▣ Pickup today</button><button>⌖ ~{view.radius} mi view</button></div></div><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView}/><article className="sheet"><i/><div className="sheet-head"><div><small>{view.count} in this map area · 1 online</small><h2>Deals in this area</h2></div><button aria-label="Save selected deal">♡</button></div><div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{offer.store === 'Amazon' ? 'Online' : 'In stock'}</em></span><strong>${offer.price}.00<button onClick={() => notify(`Opening ${offer.store}`)}>View deal ›</button></strong></div><div className="deal-note"><span>↻</span><p><b>Map area updates automatically</b><small>Move in any direction to discover stores there</small></p></div></article></section>;
+  return <section className="page map-page"><div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Best total</button><button>▣ Pickup today</button><button>⌖ ~{view.radius} mi view</button></div></div><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView}/><article className="sheet"><i/><div className="sheet-head"><div><small>{view.count} real stores in this map area</small><h2>Deals in this area</h2></div><button aria-label="Save selected deal">♡</button></div>{view.count > 0 ? <><div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{offer.store === 'Amazon' ? 'Online' : offer.price === null ? 'Mapped location' : 'In stock'}</em></span><strong className={offer.price === null ? 'no-price' : ''}>{offer.price === null ? 'Price unavailable' : `$${offer.price}.00`}<button onClick={() => notify(`Opening ${offer.store}`)}>{offer.price === null ? 'Store details' : 'View deal'} ›</button></strong></div></> : <div className="area-empty"><b>No mapped stores at this view</b><span>Zoom in or move the map to search another U.S. area.</span></div>}<div className="deal-note"><span>✓</span><p><b>Real stores only</b><small>Unconnected retailers show no price instead of a made-up one</small></p></div></article></section>;
 }
 function Saved({ query, setQuery, products, notify }: any) { return <section className="page"><h2>Saved</h2><SearchBox value={query} setValue={setQuery} placeholder="Search saved items"/><div className="segments"><button className="on">Products</button><button>Stores</button></div><div className="summary"><b>♧</b><span><strong>3 price watches</strong><small>We’ll alert you when prices drop.</small></span></div><div className="saved-list">{products.map((p:any) => <article key={p[0]}><i>{p[3]}</i><span><h3>{p[0]}</h3><small>Best price</small><strong>${p[1]}</strong>{p[2] && <em>{p[2]}</em>}<button onClick={() => notify(`Viewing ${p[0]}`)}>View prices ›</button></span><b>♥</b></article>)}</div>{!products.length && <p className="empty">No saved items found.</p>}</section> }
 function Alerts({ notify }: any) { return <section className="page"><h2>Price alerts</h2><article className="featured"><b>↓ Price drop <small>Now •</small></b><h3>Sony 55-inch TV</h3><strong>Now $726 — down $24</strong><p>✦ Walmart · 2.4 mi</p><button onClick={() => notify('Opening price-drop deal')}>View deal ›</button></article><h2 className="subhead">Earlier</h2>{[['◉','AirPods Pro dropped to $189','2h'],['▣','Nintendo Switch OLED is back in stock','Yesterday']].map(a => <button className="alert-row" key={a[1]}><i>{a[0]}</i><b>{a[1]}<small>Walmart · 2.4 mi</small></b><span>{a[2]} ›</span></button>)}</section> }
