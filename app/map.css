@@ -191,6 +191,44 @@
 .deal-note p { margin: 0; font-size: 11px; }
 .deal-note small { display: block; color: var(--muted); font-size: 9px; }
 
+.price-feed-state {
+  display: grid;
+  gap: 3px;
+  margin-top: 9px;
+  border: 1px solid #dce3e7;
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #f7f9fa;
+  color: #435064;
+}
+
+.price-feed-state b { font-size: 12px; }
+.price-feed-state span,
+.price-feed-state small { color: var(--muted); font-size: 9px; line-height: 1.35; }
+.price-feed-state.loading { border-color: #bcd7f7; background: #f3f8ff; }
+.price-feed-state.error { border-color: #efd0cc; background: #fff7f5; }
+
+.live-prices {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.live-prices-title { display: flex; align-items: center; justify-content: space-between; padding: 0 3px; }
+.live-prices-title b { font-size: 12px; }
+.live-prices-title span { color: var(--green); font-size: 9px; font-weight: 750; }
+.live-prices-title a { display: flex; align-items: center; }
+.live-prices-title img { width: auto; height: 18px; object-fit: contain; }
+.live-prices article { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid #cbe7d6; border-radius: 14px; padding: 9px 11px; background: #fbfffc; }
+.live-prices article span { min-width: 0; }
+.live-prices article span b { display: block; overflow: hidden; color: var(--ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.live-prices article small { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; }
+.live-prices article strong { color: var(--green); font-size: 14px; text-align: right; }
+.live-prices article a { display: block; margin-top: 3px; color: var(--blue); font-size: 9px; text-decoration: none; }
+
+.saved-list article strong { font-size: 12px; color: #435064; }
+.feed-waiting > strong { color: #435064; }
+
 @media (min-width: 900px) {
   .map-shell { grid-column: 1; grid-row: 2; min-height: 0; }
   .map-guide { top: 14px; font-size: 11px; }

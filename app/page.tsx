@@ -18,25 +18,52 @@ type Offer = {
   mapTier?: 1 | 2 | 3;
 };
 
+type LivePrice = {
+  id: string;
+  retailer: string;
+  title: string;
+  price: number;
+  regularPrice: number | null;
+  currency: 'USD';
+  availability: string;
+  fulfillment: string[];
+  imageUrl: string | null;
+  productUrl: string;
+  source: 'official-api';
+  updatedAt: string;
+};
+
+type RetailerConnection = {
+  retailer: string;
+  state: 'connected' | 'needs_credentials' | 'partner_access' | 'unavailable';
+  message: string;
+  signupUrl?: string;
+};
+
+type PriceSearch = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  offers: LivePrice[];
+  retailers: RetailerConnection[];
+};
+
 const offers: Offer[] = [
-  { store: 'Walmart', price: 726, distance: '2.4 mi', color: '#1674ea', mark: '✦', detail: 'Pickup today', address: '1011 Shelby Rd', coordinates: [-81.3625539, 35.2384283], mapTier: 1 },
-  { store: 'Best Buy', price: 748, distance: '14.8 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '3050 E Franklin Blvd', coordinates: [-81.122254, 35.260018], mapTier: 1 },
-  { store: 'Amazon', price: 749, distance: 'Online', color: '#152033', mark: 'a', detail: 'Free delivery', address: 'Ships to 28086' },
-  { store: 'Target', price: 799, distance: '14.1 mi', color: '#d92332', mark: '◎', detail: 'Limited stock', address: '425 Cox Rd', coordinates: [-81.1388478, 35.2645694], mapTier: 1 },
-  { store: 'Walmart Shelby', price: 739, distance: '17.6 mi', color: '#1674ea', mark: '✦', detail: 'Pickup tomorrow', address: '705 E Dixon Blvd', coordinates: [-81.5298412, 35.2773291], mapTier: 2 },
-  { store: 'Walmart Belmont', price: 744, distance: '24.3 mi', color: '#1674ea', mark: '✦', detail: 'In stock', address: '701 Hawley Ave', coordinates: [-81.0354725, 35.2554193], mapTier: 2 },
-  { store: 'Micro Center', price: 719, distance: '35.8 mi', color: '#ed1c24', mark: 'MC', detail: 'In stock', address: '4744 South Blvd', coordinates: [-80.8777176, 35.1746978], mapTier: 3 },
-  { store: 'Apple SouthPark', price: 829, distance: '39.2 mi', color: '#1d1d1f', mark: '', detail: 'Pickup today', address: '4400 Sharon Rd', coordinates: [-80.831925, 35.1524576], mapTier: 3 },
-  { store: 'Walmart Lincolnton', price: 735, distance: '31.4 mi', color: '#1674ea', mark: '✦', detail: 'Pickup today', address: '306 N Generals Blvd', coordinates: [-81.2409266, 35.483307], mapTier: 3 },
-  { store: 'Best Buy Hickory', price: 742, distance: '53.6 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '1884 Catawba Valley Blvd SE', coordinates: [-81.3099218, 35.7010015], mapTier: 3 },
-  { store: 'Target Hickory', price: 789, distance: '53.5 mi', color: '#d92332', mark: '◎', detail: 'Pickup tomorrow', address: '1910 Catawba Valley Blvd SE', coordinates: [-81.3083741, 35.7001696], mapTier: 3 },
-  { store: 'Walmart Forest City', price: 731, distance: '38.1 mi', color: '#1674ea', mark: '✦', detail: 'In stock', address: '197 Plaza Dr', coordinates: [-81.8995605, 35.3351939], mapTier: 3 },
-  { store: 'Walmart Gaffney', price: 728, distance: '25.7 mi', color: '#1674ea', mark: '✦', detail: 'Pickup today', address: '165 Walton Dr', coordinates: [-81.6659322, 35.0872774], mapTier: 3 },
-  { store: 'Best Buy Spartanburg', price: 746, distance: '54.9 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '110 E Blackstock Rd', coordinates: [-81.9924948, 34.935111], mapTier: 3 },
-  { store: 'Best Buy Rock Hill', price: 741, distance: '37.3 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '1775 Chamberside Dr', coordinates: [-80.9771687, 34.9387534], mapTier: 3 },
-  { store: 'Target Rock Hill', price: 795, distance: '37.1 mi', color: '#d92332', mark: '◎', detail: 'Pickup today', address: '1900 Springsteen Rd', coordinates: [-80.9783659, 34.9385821], mapTier: 3 },
-  { store: 'Best Buy Concord', price: 738, distance: '52.4 mi', color: '#f4ce12', mark: 'BEST', detail: 'In stock', address: '8111 Concord Mills Blvd', coordinates: [-80.7188018, 35.3684095], mapTier: 3 },
-  { store: 'Target Concord', price: 792, distance: '55.2 mi', color: '#d92332', mark: '◎', detail: 'Pickup tomorrow', address: '6150 Bayfield Pkwy', coordinates: [-80.6792366, 35.4170115], mapTier: 3 },
+  { store: 'Walmart', price: null, distance: '2.4 mi', color: '#1674ea', mark: '✦', detail: 'Price feed not connected', address: '1011 Shelby Rd', coordinates: [-81.3625539, 35.2384283], mapTier: 1 },
+  { store: 'Best Buy', price: null, distance: '14.8 mi', color: '#f4ce12', mark: 'BEST', detail: 'Official API ready', address: '3050 E Franklin Blvd', coordinates: [-81.122254, 35.260018], mapTier: 1 },
+  { store: 'Target', price: null, distance: '14.1 mi', color: '#d92332', mark: '◎', detail: 'No public price API', address: '425 Cox Rd', coordinates: [-81.1388478, 35.2645694], mapTier: 1 },
+  { store: 'Walmart Shelby', price: null, distance: '17.6 mi', color: '#1674ea', mark: '✦', detail: 'Price feed not connected', address: '705 E Dixon Blvd', coordinates: [-81.5298412, 35.2773291], mapTier: 2 },
+  { store: 'Walmart Belmont', price: null, distance: '24.3 mi', color: '#1674ea', mark: '✦', detail: 'Price feed not connected', address: '701 Hawley Ave', coordinates: [-81.0354725, 35.2554193], mapTier: 2 },
+  { store: 'Micro Center', price: null, distance: '35.8 mi', color: '#ed1c24', mark: 'MC', detail: 'No public price API', address: '4744 South Blvd', coordinates: [-80.8777176, 35.1746978], mapTier: 3 },
+  { store: 'Apple SouthPark', price: null, distance: '39.2 mi', color: '#1d1d1f', mark: '', detail: 'No public retail API', address: '4400 Sharon Rd', coordinates: [-80.831925, 35.1524576], mapTier: 3 },
+  { store: 'Walmart Lincolnton', price: null, distance: '31.4 mi', color: '#1674ea', mark: '✦', detail: 'Price feed not connected', address: '306 N Generals Blvd', coordinates: [-81.2409266, 35.483307], mapTier: 3 },
+  { store: 'Best Buy Hickory', price: null, distance: '53.6 mi', color: '#f4ce12', mark: 'BEST', detail: 'Official API ready', address: '1884 Catawba Valley Blvd SE', coordinates: [-81.3099218, 35.7010015], mapTier: 3 },
+  { store: 'Target Hickory', price: null, distance: '53.5 mi', color: '#d92332', mark: '◎', detail: 'No public price API', address: '1910 Catawba Valley Blvd SE', coordinates: [-81.3083741, 35.7001696], mapTier: 3 },
+  { store: 'Walmart Forest City', price: null, distance: '38.1 mi', color: '#1674ea', mark: '✦', detail: 'Price feed not connected', address: '197 Plaza Dr', coordinates: [-81.8995605, 35.3351939], mapTier: 3 },
+  { store: 'Walmart Gaffney', price: null, distance: '25.7 mi', color: '#1674ea', mark: '✦', detail: 'Price feed not connected', address: '165 Walton Dr', coordinates: [-81.6659322, 35.0872774], mapTier: 3 },
+  { store: 'Best Buy Spartanburg', price: null, distance: '54.9 mi', color: '#f4ce12', mark: 'BEST', detail: 'Official API ready', address: '110 E Blackstock Rd', coordinates: [-81.9924948, 34.935111], mapTier: 3 },
+  { store: 'Best Buy Rock Hill', price: null, distance: '37.3 mi', color: '#f4ce12', mark: 'BEST', detail: 'Official API ready', address: '1775 Chamberside Dr', coordinates: [-80.9771687, 34.9387534], mapTier: 3 },
+  { store: 'Target Rock Hill', price: null, distance: '37.1 mi', color: '#d92332', mark: '◎', detail: 'No public price API', address: '1900 Springsteen Rd', coordinates: [-80.9783659, 34.9385821], mapTier: 3 },
+  { store: 'Best Buy Concord', price: null, distance: '52.4 mi', color: '#f4ce12', mark: 'BEST', detail: 'Official API ready', address: '8111 Concord Mills Blvd', coordinates: [-80.7188018, 35.3684095], mapTier: 3 },
+  { store: 'Target Concord', price: null, distance: '55.2 mi', color: '#d92332', mark: '◎', detail: 'No public price API', address: '6150 Bayfield Pkwy', coordinates: [-80.6792366, 35.4170115], mapTier: 3 },
 ];
 
 const HOME: [number, number] = [-81.3627789, 35.2444756];
@@ -77,9 +104,9 @@ function loadMapLibrary() {
   return mapLibraryPromise;
 }
 const products = [
-  ['Sony 55-inch TV', '726', 'Down $24', '▰'],
-  ['Apple AirPods Pro', '189', '', '◉'],
-  ['Nintendo Switch OLED', '299', 'In stock', '▣'],
+  ['Sony 55-inch TV', 'Waiting for live prices', '', '▰'],
+  ['Apple AirPods Pro', 'Waiting for live prices', '', '◉'],
+  ['Nintendo Switch OLED', 'Waiting for live prices', '', '▣'],
 ];
 
 export default function Home() {
@@ -103,10 +130,10 @@ export default function Home() {
     </div>
     <nav>{tabs.map(item => <button key={item} aria-label={`Open ${item} tab`} aria-current={tab === item ? 'page' : undefined} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}><b aria-hidden="true">{icons[item]}</b>{item}</button>)}</nav>
     {toast && <div className="toast">{toast}</div>}
-  </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Sample offers • Kings Mountain, NC</small></aside></main>;
+  </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Real U.S. stores • Verified price feeds only</small></aside></main>;
 }
 
-function Search({ query, setQuery, open }: any) { return <section className="page search-page"><SearchBox value={query} setValue={setQuery} placeholder="What are you shopping for?"/><p className="label">RECENT SEARCH</p><button className="pill" onClick={open}>◷ Sony 55-inch TV</button><h2>Popular near you</h2><div className="categories">{[['▰','TVs'],['▱','Laptops'],['◉','Headphones'],['▣','Gaming']].map(x => <button key={x[1]} onClick={open}><b>{x[0]}</b><span>{x[1]}</span><i>›</i></button>)}</div><h2>Trending deals</h2><button className="trend" onClick={open}><i>SONY</i><span><b>Sony 55-inch TV</b><small>From</small><strong>$726</strong><small>4 stores</small></span><em>›</em></button></section> }
+function Search({ query, setQuery, open }: any) { return <section className="page search-page"><SearchBox value={query} setValue={setQuery} placeholder="What are you shopping for?"/><p className="label">RECENT SEARCH</p><button className="pill" onClick={open}>◷ Sony 55-inch TV</button><h2>Popular near you</h2><div className="categories">{[['▰','TVs'],['▱','Laptops'],['◉','Headphones'],['▣','Gaming']].map(x => <button key={x[1]} onClick={open}><b>{x[0]}</b><span>{x[1]}</span><i>›</i></button>)}</div><h2>Verified price search</h2><button className="trend" onClick={open}><i>LIVE</i><span><b>{query || 'Search a product'}</b><small>Official retailer data only</small><strong>Compare</strong><small>No estimated prices</small></span><em>›</em></button></section> }
 function SearchBox({ value, setValue, placeholder }: any) { return <label className="searchbox"><b aria-hidden="true">⌕</b><input aria-label={placeholder || 'Search products'} value={value} onChange={e => setValue(e.target.value)} placeholder={placeholder}/></label> }
 type MapView = { radius: number; count: number };
 
@@ -355,8 +382,62 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
 
 function Map({ query, setQuery, offer, setOffer, notify }: any) {
   const [view, setView] = useState<MapView>({ radius: 20, count: 3 });
-  return <section className="page map-page"><div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Best total</button><button>▣ Pickup today</button><button>⌖ ~{view.radius} mi view</button></div></div><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView}/><article className="sheet"><i/><div className="sheet-head"><div><small>{view.count} real stores in this map area</small><h2>Deals in this area</h2></div><button aria-label="Save selected deal">♡</button></div>{view.count > 0 ? <><div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{offer.store === 'Amazon' ? 'Online' : offer.price === null ? 'Mapped location' : 'In stock'}</em></span><strong className={offer.price === null ? 'no-price' : ''}>{offer.price === null ? 'Price unavailable' : `$${offer.price}.00`}<button onClick={() => notify(`Opening ${offer.store}`)}>{offer.price === null ? 'Store details' : 'View deal'} ›</button></strong></div></> : <div className="area-empty"><b>No mapped stores at this view</b><span>Zoom in or move the map to search another U.S. area.</span></div>}<div className="deal-note"><span>✓</span><p><b>Real stores only</b><small>Unconnected retailers show no price instead of a made-up one</small></p></div></article></section>;
+  const [prices, setPrices] = useState<PriceSearch>({ status: 'idle', offers: [], retailers: [] });
+
+  useEffect(() => {
+    const trimmedQuery = String(query).trim();
+    if (trimmedQuery.length < 2) {
+      const idleTimer = window.setTimeout(() => setPrices({ status: 'idle', offers: [], retailers: [] }), 0);
+      return () => window.clearTimeout(idleTimer);
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setPrices(current => ({ ...current, status: 'loading' }));
+      try {
+        const response = await fetch(`/api/offers?q=${encodeURIComponent(trimmedQuery)}`, { signal: controller.signal });
+        const data = await response.json() as { offers?: LivePrice[]; retailers?: RetailerConnection[] };
+        if (!response.ok) throw new Error('Price search failed');
+        setPrices({ status: 'ready', offers: data.offers ?? [], retailers: data.retailers ?? [] });
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          setPrices(current => ({ ...current, status: 'error', offers: [] }));
+        }
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query]);
+
+  return <section className="page map-page">
+    <div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Verified prices</button><button>▣ Pickup today</button><button>⌖ ~{view.radius} mi view</button></div></div>
+    <InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView}/>
+    <article className="sheet"><i/>
+      <div className="sheet-head"><div><small>{view.count} real stores in this map area</small><h2>Deals in this area</h2></div><button aria-label="Save selected deal">♡</button></div>
+      {view.count > 0 ? <div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>Mapped location</em></span><strong className="no-price">Price unavailable<button onClick={() => notify(`Opening ${offer.store}`)}>Store details ›</button></strong></div> : <div className="area-empty"><b>No mapped stores at this view</b><span>Zoom in or move the map to search another U.S. area.</span></div>}
+      <LivePriceResults query={query} search={prices}/>
+      <div className="deal-note"><span>✓</span><p><b>Verified prices only</b><small>Unconnected retailers never receive an estimated price</small></p></div>
+    </article>
+  </section>;
 }
-function Saved({ query, setQuery, products, notify }: any) { return <section className="page"><h2>Saved</h2><SearchBox value={query} setValue={setQuery} placeholder="Search saved items"/><div className="segments"><button className="on">Products</button><button>Stores</button></div><div className="summary"><b>♧</b><span><strong>3 price watches</strong><small>We’ll alert you when prices drop.</small></span></div><div className="saved-list">{products.map((p:any) => <article key={p[0]}><i>{p[3]}</i><span><h3>{p[0]}</h3><small>Best price</small><strong>${p[1]}</strong>{p[2] && <em>{p[2]}</em>}<button onClick={() => notify(`Viewing ${p[0]}`)}>View prices ›</button></span><b>♥</b></article>)}</div>{!products.length && <p className="empty">No saved items found.</p>}</section> }
-function Alerts({ notify }: any) { return <section className="page"><h2>Price alerts</h2><article className="featured"><b>↓ Price drop <small>Now •</small></b><h3>Sony 55-inch TV</h3><strong>Now $726 — down $24</strong><p>✦ Walmart · 2.4 mi</p><button onClick={() => notify('Opening price-drop deal')}>View deal ›</button></article><h2 className="subhead">Earlier</h2>{[['◉','AirPods Pro dropped to $189','2h'],['▣','Nintendo Switch OLED is back in stock','Yesterday']].map(a => <button className="alert-row" key={a[1]}><i>{a[0]}</i><b>{a[1]}<small>Walmart · 2.4 mi</small></b><span>{a[2]} ›</span></button>)}</section> }
+
+function LivePriceResults({ query, search }: { query: string; search: PriceSearch }) {
+  if (search.status === 'idle') return <div className="price-feed-state"><b>Search for a product</b><span>DealRadar will check connected official retailer feeds.</span></div>;
+  if (search.status === 'loading') return <div className="price-feed-state loading"><b>Checking official price feeds…</b><span>Looking for “{query}”</span></div>;
+  if (search.status === 'error') return <div className="price-feed-state error"><b>Price search is unavailable</b><span>Please try again in a moment.</span></div>;
+
+  if (search.offers.length) {
+    return <section className="live-prices" aria-label="Verified live prices"><div className="live-prices-title"><b>Verified live prices</b><a href="https://developer.bestbuy.com/" target="_blank" rel="noreferrer" aria-label="Powered by the Best Buy Developer API">{/* eslint-disable-next-line @next/next/no-img-element */}<img src="https://developer.bestbuy.com/images/bestbuy-logo.png" alt="Best Buy Developer API"/></a></div>{search.offers.slice(0, 2).map(item => <article key={item.id}><span><b>{item.title}</b><small>{item.retailer} · {item.availability}</small></span><strong>${item.price.toFixed(2)}<a href={item.productUrl} target="_blank" rel="noreferrer">View ›</a></strong></article>)}</section>;
+  }
+
+  const connected = search.retailers.filter(item => item.state === 'connected').length;
+  const ready = search.retailers.find(item => item.state === 'needs_credentials');
+  return <div className="price-feed-state"><b>{connected ? 'No matching live prices' : 'Retailer access needed'}</b><span>{connected ? `No connected feed matched “${query}”.` : `${ready?.retailer ?? 'Retailer'} integration is built and waiting for approved credentials.`}</span><small>{search.retailers.filter(item => item.state === 'partner_access').map(item => item.retailer).join(' and ')} require partner approval.</small></div>;
+}
+
+function Saved({ query, setQuery, products, notify }: any) { return <section className="page"><h2>Saved</h2><SearchBox value={query} setValue={setQuery} placeholder="Search saved items"/><div className="segments"><button className="on">Products</button><button>Stores</button></div><div className="summary"><b>♧</b><span><strong>3 price watches</strong><small>Alerts begin when a verified feed is connected.</small></span></div><div className="saved-list">{products.map((p:any) => <article key={p[0]}><i>{p[3]}</i><span><h3>{p[0]}</h3><small>Verified price</small><strong>{p[1]}</strong>{p[2] && <em>{p[2]}</em>}<button onClick={() => notify(`Viewing ${p[0]}`)}>Check feeds ›</button></span><b>♥</b></article>)}</div>{!products.length && <p className="empty">No saved items found.</p>}</section> }
+function Alerts({ notify }: any) { return <section className="page"><h2>Price alerts</h2><article className="featured feed-waiting"><b>Verified alerts</b><h3>No confirmed price drops yet</h3><strong>Retailer connection needed</strong><p>DealRadar will only alert you using prices received from an approved retailer feed.</p><button onClick={() => notify('Retailer connection status opened')}>View connection status ›</button></article><h2 className="subhead">Watching</h2>{[['◉','Apple AirPods Pro'],['▣','Nintendo Switch OLED']].map(a => <button className="alert-row" key={a[1]}><i>{a[0]}</i><b>{a[1]}<small>Waiting for a verified price</small></b><span>›</span></button>)}</section> }
 function Profile({ notify }: any) { const [a,setA]=useState(true); const [b,setB]=useState(true); return <section className="page"><h2>Profile</h2><article className="identity"><i>JD</i><span><h3>Jordan Davis</h3><button onClick={() => notify('Edit profile selected')}>Edit profile ›</button></span></article><h3 className="section-title">Shopping preferences</h3><div className="settings">{[['●','Home location','Kings Mountain, NC 28086'],['⌾','Search radius','10 miles'],['▣','Preferred fulfillment','Pickup & delivery']].map(x => <button key={x[1]}><i>{x[0]}</i><span><b>{x[1]}</b><small>{x[2]}</small></span><em>›</em></button>)}</div><h3 className="section-title">Notifications</h3><div className="settings toggles"><label><i>♧</i><b>Price-drop alerts</b><input type="checkbox" checked={a} onChange={e=>setA(e.target.checked)}/><span/></label><label><i>▣</i><b>Back-in-stock alerts</b><input type="checkbox" checked={b} onChange={e=>setB(e.target.checked)}/><span/></label></div><button className="privacy">♢ <b>Privacy & data</b><span>›</span></button></section> }
