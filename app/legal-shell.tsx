@@ -1,5 +1,5 @@
+/* eslint-disable @next/next/no-html-link-for-pages */
 import type { ReactNode } from 'react';
-import Link from 'next/link';
 
 type LegalPage = 'privacy' | 'terms' | 'affiliate';
 
@@ -12,8 +12,8 @@ const legalLinks: Array<{ id: LegalPage; href: string; label: string }> = [
 export function LegalShell({ active, eyebrow, title, intro, children }: { active: LegalPage; eyebrow: string; title: string; intro: string; children: ReactNode }) {
   return <main className="legal-page">
     <header className="legal-header">
-      <Link className="legal-brand" href="/" aria-label="Back to DealRadar"><span>Deal</span>Radar</Link>
-      <Link className="legal-back" href="/">‹ Back to app</Link>
+      <a className="legal-brand" href="/" aria-label="Back to DealRadar"><span>Deal</span>Radar</a>
+      <a className="legal-back" href="/">‹ Back to app</a>
     </header>
     <section className="legal-hero">
       <small>{eyebrow}</small>
@@ -22,7 +22,7 @@ export function LegalShell({ active, eyebrow, title, intro, children }: { active
       <div className="legal-effective"><span>Effective August 23, 2026</span><b>Private testing</b></div>
     </section>
     <nav className="legal-nav" aria-label="Legal documents">
-      {legalLinks.map(link => <Link key={link.id} href={link.href} aria-current={active === link.id ? 'page' : undefined}>{link.label}</Link>)}
+      {legalLinks.map(link => <a key={link.id} href={link.href} aria-current={active === link.id ? 'page' : undefined}>{link.label}</a>)}
     </nav>
     <article className="legal-document">{children}</article>
     <footer className="legal-footer">
