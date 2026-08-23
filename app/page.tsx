@@ -635,9 +635,11 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
   const verifiedRetailersRef = useRef(verifiedRetailers);
   const visibleStoresCallbackRef = useRef(onVisibleStores);
   const visibilityUpdaterRef = useRef<() => void>(() => undefined);
+  const refreshStoresRef = useRef<() => void>(() => undefined);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [needsZoom, setNeedsZoom] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState(false);
 
   useEffect(() => {
     selectedOfferRef.current = offer;
@@ -787,12 +789,14 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
           liveMarkers.forEach(entry => entry.marker.remove());
           liveMarkers = [];
           setNeedsZoom(true);
+          setDiscoveryError(false);
           setRefreshing(false);
           updateVisibleStores();
           return;
         }
 
         setNeedsZoom(false);
+        setDiscoveryError(false);
         setRefreshing(true);
         const bounds = activeMap.getBounds();
         const south = Math.max(18, bounds.getSouth());
@@ -852,15 +856,18 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
           liveMarkers.forEach(entry => entry.marker.remove());
           liveMarkers = (realStores ?? []).map((item: Offer) => createOfferMarker(item, true));
           updateVisibleStores();
+          setDiscoveryError(false);
           setRefreshing(false);
         } catch (error) {
           if ((error as Error).name === 'AbortError') return;
           if (!cancelled) {
             updateVisibleStores();
+            setDiscoveryError(true);
             setRefreshing(false);
           }
         }
       };
+      refreshStoresRef.current = () => { void refreshRealStores(); };
 
       const scheduleRefresh = () => {
         window.clearTimeout(refreshTimer);
@@ -889,6 +896,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       map?.remove();
       mapRef.current = null;
       visibilityUpdaterRef.current = () => undefined;
+      refreshStoresRef.current = () => undefined;
     };
   }, [home, setOffer, setView]);
 
@@ -906,7 +914,9 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
     {status === 'error' && <div className="map-loading map-error">Map unavailable. Check your connection.</div>}
     <div className="map-guide">Drag to explore · Scroll or pinch to zoom</div>
     <button className="recenter" onClick={recenter} aria-label="Recenter map on nearby deals">⌖ <span>Recenter</span></button>
-    <div className={`sample-badge ${refreshing ? 'refreshing' : ''}`}><b>{refreshing ? 'Searching area…' : needsZoom ? 'Zoom in for stores' : `${view.count} real stores`}</b><span>{refreshing ? 'Checking mapped retailers' : needsZoom ? 'Real locations load closer' : 'U.S. mapped locations only'}</span></div>
+    {discoveryError
+      ? <button className="sample-badge store-retry" onClick={() => refreshStoresRef.current()}><b>Store search paused</b><span>Tap to retry real locations</span></button>
+      : <div className={`sample-badge ${refreshing ? 'refreshing' : ''}`}><b>{refreshing ? 'Searching area…' : needsZoom ? 'Zoom in for stores' : `${view.count} real stores`}</b><span>{refreshing ? 'Checking mapped retailers' : needsZoom ? 'Real locations load closer' : 'U.S. mapped locations only'}</span></div>}
   </div>;
 }
 

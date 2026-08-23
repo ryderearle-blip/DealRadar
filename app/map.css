@@ -89,6 +89,9 @@
 .sample-badge span { margin-top: 1px; color: #dce6ef; font-size: 8px; font-weight: 600; }
 .sample-badge.refreshing { background: #0d70e8e8; }
 .sample-badge.refreshing b::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border: 1px solid #fff; border-top-color: transparent; border-radius: 50%; animation: map-spin .65s linear infinite; }
+.sample-badge.store-retry { border: 1px solid #ffd7a8; background: #8d3f18ed; text-align: left; pointer-events: auto; }
+.sample-badge.store-retry:hover,
+.sample-badge.store-retry:focus-visible { background: #713013; outline: 2px solid #fff; outline-offset: 2px; }
 
 .recenter {
   position: absolute;
