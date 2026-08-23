@@ -89,8 +89,6 @@ function profileSearchFilters(preferences: ProfilePreferences): SearchFilters {
 type PriceHistoryPoint = { price: number; recordedAt: string };
 type CostBreakdown = { item: number; tax: number; shipping: number | null; travel: number | null; total: number; complete: boolean; method: 'Local pickup' | 'Online' };
 
-const HOME_TAX_RATE = 0.0675;
-const TRAVEL_COST_PER_MILE = 0.70;
 const suggestionCatalog = [
   { title: 'Sony 55-inch TV', meta: 'Product type', value: 'Sony 55-inch TV' },
   { title: 'Sony BRAVIA TV', meta: 'Brand and product', value: 'Sony BRAVIA TV' },
@@ -263,9 +261,10 @@ function nearestRetailerDistance(retailer: string, home: [number, number] = HOME
   return Math.min(...matchingStores.map(item => milesBetween(home, item.coordinates!)));
 }
 
-function costForOffer(item: LivePrice, scope: SearchFilters['scope'], home: [number, number] = HOME): CostBreakdown {
+function costForOffer(item: LivePrice, scope: SearchFilters['scope'], preferences: Pick<ProfilePreferences, 'coordinates' | 'salesTaxPercent' | 'travelCostPerMile'> = defaultProfilePreferences): CostBreakdown {
+  const home = preferences.coordinates;
   const distance = nearestRetailerDistance(item.retailer, home);
-  return calculateEstimatedTotalCost(item, scope, distance, HOME_TAX_RATE, TRAVEL_COST_PER_MILE);
+  return calculateEstimatedTotalCost(item, scope, distance, preferences.salesTaxPercent / 100, preferences.travelCostPerMile);
 }
 
 function recordVerifiedPriceHistory(items: LivePrice[]) {
@@ -464,8 +463,8 @@ function Search({ query, setQuery, open, openConnections, notify, preferences }:
     priceSearch.offers,
     filters,
     retailer => nearestRetailerDistance(retailer, preferences.coordinates),
-    item => costForOffer(item, filters.scope, preferences.coordinates).total,
-  ), [filters, preferences.coordinates, priceSearch.offers]);
+    item => costForOffer(item, filters.scope, preferences).total,
+  ), [filters, preferences, priceSearch.offers]);
   const comparedOffers = compareIds.flatMap(id => priceSearch.offers.find(item => item.id === id) ?? []);
 
   const appliedCount = [
@@ -509,11 +508,12 @@ function Search({ query, setQuery, open, openConnections, notify, preferences }:
         <button className={filters.maxPrice === 500 ? 'active' : ''} onClick={() => setFilters(current => ({ ...current, maxPrice: current.maxPrice === 500 ? null : 500 }))}>Under $500</button>
       </div>
       <div className="search-result-heading"><div><small>{filters.scope.toUpperCase()} · VERIFIED RETAILER RESULTS</small><h2>{priceSearch.status === 'loading' ? 'Searching…' : `${filteredOffers.length} results`}</h2></div><button onClick={beginFiltering}>{filters.sort === 'best' ? 'Best match' : filters.sort === 'price-low' ? 'Lowest price' : filters.sort === 'price-high' ? 'Highest price' : filters.sort === 'total-cost' ? 'Total cost' : 'Nearest'}⌄</button></div>
+      {priceSearch.status === 'ready' && priceSearch.offers.length > 0 && <p className="search-cost-note">Planning totals use your Profile assumptions: {preferences.salesTaxPercent.toFixed(2)}% tax · ${preferences.travelCostPerMile.toFixed(2)}/mi round trip.</p>}
       {priceSearch.status === 'loading' && <div className="search-loading"><span/><b>Checking official price feeds</b><small>Prices are never estimated.</small></div>}
       {priceSearch.status === 'error' && <div className="search-no-results"><b>Search is temporarily unavailable</b><span>Try again in a moment.</span></div>}
       {priceSearch.status === 'ready' && filteredOffers.length > 0 && <div className="search-results">{filteredOffers.map(item => {
         const distance = nearestRetailerDistance(item.retailer, preferences.coordinates);
-        const cost = costForOffer(item, filters.scope, preferences.coordinates);
+        const cost = costForOffer(item, filters.scope, preferences);
         const selected = compareIds.includes(item.id);
         const saved = savedProducts.some(savedItem => savedItem.id === item.id);
         return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b>Official API</b></div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial total $${cost.total.toFixed(2)}`}<span>{cost.method}</span></em><button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
@@ -535,7 +535,7 @@ function Search({ query, setQuery, open, openConnections, notify, preferences }:
     {compareOpen && <CompareSheet
       items={comparedOffers}
       scope={filters.scope}
-      home={preferences.coordinates}
+      preferences={preferences}
       onClose={() => setCompareOpen(false)}
     />}
     {historyItem && <PriceHistorySheet
@@ -611,13 +611,13 @@ function BarcodeScanner({ onClose, onFound }: { onClose: () => void; onFound: (c
   return <div className="filter-backdrop scanner-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="barcode-sheet" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div className="filter-sheet-head"><div><small>EXACT PRODUCT SEARCH</small><h2 id="scanner-title">Scan barcode</h2></div><button onClick={onClose} aria-label="Close barcode scanner">×</button></div><div className="camera-view"><video ref={videoRef} muted playsInline/><span/><b>UPC / EAN</b></div><p role="status" aria-live="polite">{status}</p><form onSubmit={submit}><label><span>Enter barcode manually</span><input inputMode="numeric" autoComplete="off" value={manualCode} onChange={event => setManualCode(event.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="8–14 digit code"/></label><button type="submit">Search exact product</button></form><small className="privacy-note">Camera video stays on this device and is never uploaded.</small></section></div>;
 }
 
-function CompareSheet({ items, scope, home, onClose }: { items: LivePrice[]; scope: SearchFilters['scope']; home: [number, number]; onClose: () => void }) {
+function CompareSheet({ items, scope, preferences, onClose }: { items: LivePrice[]; scope: SearchFilters['scope']; preferences: ProfilePreferences; onClose: () => void }) {
   const dialog = useAccessibleDialog(onClose);
   return <div className="filter-backdrop compare-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="compare-sheet" role="dialog" aria-modal="true" aria-labelledby="compare-title"><div className="filter-sheet-head"><div><small>SIDE-BY-SIDE</small><h2 id="compare-title">Compare {items.length} deals</h2></div><button onClick={onClose} aria-label="Close comparison">×</button></div><div className="compare-grid">{items.map(item => {
-    const cost = costForOffer(item, scope, home);
-    const distance = nearestRetailerDistance(item.retailer, home);
+    const cost = costForOffer(item, scope, preferences);
+    const distance = nearestRetailerDistance(item.retailer, preferences.coordinates);
     return <article key={item.id}><div className="compare-brand">{item.retailer}</div><h3>{item.title}</h3><dl><div><dt>Item price</dt><dd>${item.price.toFixed(2)}</dd></div><div className="total"><dt>{cost.complete ? 'Estimated total' : 'Partial total'}</dt><dd>${cost.total.toFixed(2)}</dd></div><div><dt>Tax estimate</dt><dd>${cost.tax.toFixed(2)}</dd></div><div><dt>Shipping</dt><dd>{cost.shipping === null ? 'Not provided' : cost.shipping === 0 ? 'Free' : `$${cost.shipping.toFixed(2)}`}</dd></div><div><dt>Round-trip travel</dt><dd>{cost.travel === null ? 'Not applicable' : `$${cost.travel.toFixed(2)}`}</dd></div><div><dt>Distance</dt><dd>{distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</dd></div><div><dt>Availability</dt><dd>{item.availability}</dd></div><div><dt>Fulfillment</dt><dd>{item.fulfillment.join(' / ') || 'Not provided'}</dd></div><div><dt>Model match</dt><dd>{item.matchType}</dd></div><div><dt>Returns</dt><dd><a href={item.productUrl} target="_blank" rel="noreferrer">See retailer policy</a></dd></div></dl></article>;
-  })}</div><p className="cost-disclaimer">Totals use the verified item price, official shipping cost when supplied, a 6.75% location-based tax estimate, and $0.70 per round-trip mile. Confirm tax and shipping at checkout.</p></section></div>;
+  })}</div><p className="cost-disclaimer">Totals use verified item prices, official shipping when supplied, your {preferences.salesTaxPercent.toFixed(2)}% tax assumption, and ${preferences.travelCostPerMile.toFixed(2)} per round-trip mile. Change these assumptions in Profile and confirm final tax and shipping at checkout.</p></section></div>;
 }
 
 function PriceHistorySheet({ item, onClose }: { item: LivePrice; onClose: () => void }) {
@@ -1300,7 +1300,7 @@ function PriceWatchSheet({ product, setting, onClose, onSave }: { product: Saved
 
   return <div className="filter-backdrop watch-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="watch-sheet" role="dialog" aria-modal="true" aria-labelledby="watch-settings-title"><div className="filter-sheet-head"><div><small>VERIFIED PRICE WATCH</small><h2 id="watch-settings-title">Set your target</h2></div><button onClick={onClose} aria-label="Close price-watch settings">×</button></div><h3>{product.title}</h3><p>Saved verified price <b>${product.price.toFixed(2)}</b></p><div className="watch-targets"><button className={mode === 'any' ? 'selected' : ''} onClick={() => setMode('any')}>Any drop<small>Below ${product.price.toFixed(2)}</small></button><button className={mode === 'five' ? 'selected' : ''} onClick={() => setMode('five')}>5% off<small>${fivePercent.toFixed(2)}</small></button><button className={mode === 'ten' ? 'selected' : ''} onClick={() => setMode('ten')}>10% off<small>${tenPercent.toFixed(2)}</small></button><button className={mode === 'custom' ? 'selected' : ''} onClick={() => setMode('custom')}>Custom<small>Your price</small></button></div>{mode === 'custom' && <label className="custom-target"><span>Notify me at or below</span><div>$ <input inputMode="decimal" value={custom} onChange={event => setCustom(event.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00"/></div>{!validCustom && <small>Enter a price below ${product.price.toFixed(2)}.</small>}</label>}<label className="stock-watch"><span><b>Back-in-stock alert</b><small>Notify when an official feed reports it available again.</small></span><input type="checkbox" checked={backInStock} onChange={event => setBackInStock(event.target.checked)}/><i/></label><button className="save-watch" disabled={!validCustom} onClick={submit}>Save watch settings</button><small className="watch-disclaimer">Alerts are evaluated only when DealRadar receives a matching official retailer price.</small></section></div>;
 }
-type ProfilePanel = 'name' | 'location' | 'radius' | 'fulfillment' | 'connections' | 'privacy' | null;
+type ProfilePanel = 'name' | 'location' | 'radius' | 'fulfillment' | 'costs' | 'connections' | 'privacy' | null;
 
 function Profile({ preferences, setPreferences, notify, restartOnboarding }: { preferences: ProfilePreferences; setPreferences: (preferences: ProfilePreferences) => void; notify: (message: string) => void; restartOnboarding: () => void }) {
   const [panel, setPanel] = useState<ProfilePanel>(null);
@@ -1315,7 +1315,7 @@ function Profile({ preferences, setPreferences, notify, restartOnboarding }: { p
     <div className="profile-home-card"><span>⌂</span><div><small>HOME SHOPPING AREA</small><b>{preferences.locationLabel}</b><em>{preferences.zipCode} · United States</em></div><button onClick={() => setPanel('location')}>Change</button></div>
     <RetailerConnectionCard onOpen={() => setPanel('connections')}/>
     <div className="profile-section-head"><h3>Shopping preferences</h3><small>Used in Search and Map</small></div>
-    <div className="profile-settings"><button onClick={() => setPanel('radius')}><i>⌾</i><span><b>Shopping radius</b><small>Default Search distance and Map quick filter</small></span><em>{preferences.searchRadius} mi ›</em></button><button onClick={() => setPanel('fulfillment')}><i>▣</i><span><b>Preferred fulfillment</b><small>Sets the starting Search filter</small></span><em>{fulfillmentLabel(preferences.fulfillment)} ›</em></button></div>
+    <div className="profile-settings shopping-settings"><button onClick={() => setPanel('radius')}><i>⌾</i><span><b>Shopping radius</b><small>Default Search distance and Map quick filter</small></span><em>{preferences.searchRadius} mi ›</em></button><button onClick={() => setPanel('fulfillment')}><i>▣</i><span><b>Preferred fulfillment</b><small>Sets the starting Search filter</small></span><em>{fulfillmentLabel(preferences.fulfillment)} ›</em></button><button onClick={() => setPanel('costs')}><i>$</i><span><b>Cost assumptions</b><small>Tax and driving estimates for total cost</small></span><em>{preferences.salesTaxPercent.toFixed(2)}% · ${preferences.travelCostPerMile.toFixed(2)}/mi ›</em></button></div>
     <div className="profile-section-head"><h3>Notifications</h3><small>Device preferences</small></div>
     <div className="profile-settings profile-toggles"><label><i>♧</i><span><b>Price-drop alerts</b><small>Allow verified target alerts</small></span><input type="checkbox" checked={preferences.priceDropNotifications} onChange={event => update({ priceDropNotifications: event.target.checked }, event.target.checked ? 'Price-drop notifications enabled' : 'Price-drop notifications paused')}/><em/></label><label><i>▣</i><span><b>Back-in-stock alerts</b><small>Allow verified availability alerts</small></span><input type="checkbox" checked={preferences.backInStockNotifications} onChange={event => update({ backInStockNotifications: event.target.checked }, event.target.checked ? 'Back-in-stock notifications enabled' : 'Back-in-stock notifications paused')}/><em/></label></div>
     <button className="profile-privacy" onClick={() => setPanel('privacy')}><i>♢</i><span><b>Privacy & shopping data</b><small>Export or clear device-local DealRadar data</small></span><em>›</em></button>
@@ -1340,6 +1340,12 @@ function Profile({ preferences, setPreferences, notify, restartOnboarding }: { p
       current={preferences.fulfillment}
       onClose={() => setPanel(null)}
       onSave={fulfillment => { update({ fulfillment }, `Default changed to ${fulfillmentLabel(fulfillment)}`); setPanel(null); }}
+    />}
+    {panel === 'costs' && <CostAssumptionsProfileSheet
+      salesTaxPercent={preferences.salesTaxPercent}
+      travelCostPerMile={preferences.travelCostPerMile}
+      onClose={() => setPanel(null)}
+      onSave={costs => { update(costs, 'Total-cost assumptions updated'); setPanel(null); }}
     />}
     {panel === 'privacy' && <PrivacyProfileSheet
       preferences={preferences}
@@ -1438,6 +1444,15 @@ function FulfillmentProfileSheet({ current, onClose, onSave }: { current: Profil
   const [value, setValue] = useState(current);
   const options: Array<{ value: ProfilePreferences['fulfillment']; title: string; note: string }> = [{ value: 'both', title: 'Pickup & shipping', note: 'Compare every verified option' }, { value: 'pickup', title: 'Pickup first', note: 'Start with local pickup results' }, { value: 'shipping', title: 'Shipping first', note: 'Start with shippable online results' }];
   return <ProfileSheetFrame eyebrow="SEARCH DEFAULT" title="Preferred fulfillment" onClose={onClose}><div className="profile-choice-list">{options.map(option => <button key={option.value} className={value === option.value ? 'selected' : ''} onClick={() => setValue(option.value)}><i>{value === option.value ? '✓' : ''}</i><span><b>{option.title}</b><small>{option.note}</small></span></button>)}</div><button className="profile-save" onClick={() => onSave(value)}>Save preference</button></ProfileSheetFrame>;
+}
+
+function CostAssumptionsProfileSheet({ salesTaxPercent, travelCostPerMile, onClose, onSave }: { salesTaxPercent: number; travelCostPerMile: number; onClose: () => void; onSave: (costs: Pick<ProfilePreferences, 'salesTaxPercent' | 'travelCostPerMile'>) => void }) {
+  const [tax, setTax] = useState(salesTaxPercent.toFixed(2));
+  const [travel, setTravel] = useState(travelCostPerMile.toFixed(2));
+  const taxValue = Number(tax);
+  const travelValue = Number(travel);
+  const valid = Number.isFinite(taxValue) && taxValue >= 0 && taxValue <= 15 && Number.isFinite(travelValue) && travelValue >= 0 && travelValue <= 5;
+  return <ProfileSheetFrame eyebrow="ESTIMATED TOTAL" title="Cost assumptions" onClose={onClose}><p className="profile-sheet-copy">Use rates that fit your shopping area and vehicle. DealRadar applies them consistently when ranking local pickup against online delivery.</p><div className="cost-assumption-fields"><label className="profile-field"><span>Sales tax assumption (%)</span><input autoFocus data-dialog-initial-focus inputMode="decimal" value={tax} onChange={event => setTax(event.target.value.replace(/[^0-9.]/g, ''))} aria-describedby="tax-range"/><small id="tax-range">0%–15%. Confirm the actual rate at checkout.</small></label><label className="profile-field"><span>Driving cost per mile ($)</span><input inputMode="decimal" value={travel} onChange={event => setTravel(event.target.value.replace(/[^0-9.]/g, ''))} aria-describedby="travel-range"/><small id="travel-range">$0–$5, applied to the round trip.</small></label></div>{!valid && <p className="profile-field-error">Enter a tax rate from 0% to 15% and a driving cost from $0 to $5 per mile.</p>}<button className="profile-save" disabled={!valid} onClick={() => valid && onSave({ salesTaxPercent: Math.round(taxValue * 100) / 100, travelCostPerMile: Math.round(travelValue * 100) / 100 })}>Save assumptions</button><small className="profile-sheet-note">These are planning estimates saved only on this device—not quotes from a retailer or tax authority.</small></ProfileSheetFrame>;
 }
 
 function PrivacyProfileSheet({ preferences, onClose, onCleared }: { preferences: ProfilePreferences; onClose: () => void; onCleared: () => void }) {

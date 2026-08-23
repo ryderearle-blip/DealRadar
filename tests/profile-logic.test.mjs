@@ -14,11 +14,17 @@ test('profile settings fall back safely and retain valid preferences', () => {
   const parsed = parseProfilePreferences(JSON.stringify({
     name: 'Ryder Earle', zipCode: '28086', locationLabel: 'Kings Mountain, NC',
     coordinates: [-81.38, 35.25], searchRadius: 50, fulfillment: 'pickup',
+    salesTaxPercent: 7.25, travelCostPerMile: 0.64,
     priceDropNotifications: false, backInStockNotifications: true,
   }));
   assert.equal(parsed.name, 'Ryder Earle');
   assert.equal(parsed.searchRadius, 50);
   assert.equal(parsed.fulfillment, 'pickup');
+  assert.equal(parsed.salesTaxPercent, 7.25);
+  assert.equal(parsed.travelCostPerMile, 0.64);
+  const bounded = parseProfilePreferences(JSON.stringify({ salesTaxPercent: 20, travelCostPerMile: -1 }));
+  assert.equal(bounded.salesTaxPercent, defaultProfilePreferences.salesTaxPercent);
+  assert.equal(bounded.travelCostPerMile, defaultProfilePreferences.travelCostPerMile);
 });
 
 test('US ZIP input and profile initials are normalized', () => {

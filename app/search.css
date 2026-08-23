@@ -49,6 +49,7 @@
 .search-result-heading small { color: var(--green); font-size: 9px; font-weight: 850; letter-spacing: .08em; }
 .search-result-heading h2 { margin: 2px 0 0; font-size: 25px; }
 .search-result-heading > button { border: 0; background: none; padding: 5px 0; color: var(--blue); font-size: 11px; font-weight: 750; }
+.search-cost-note { margin: -5px 0 10px; border-left: 2px solid var(--green); padding-left: 8px; color: var(--muted); font-size: 8px; line-height: 1.45; }
 
 .search-loading,
 .search-no-results {

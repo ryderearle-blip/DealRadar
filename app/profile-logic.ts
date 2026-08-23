@@ -7,6 +7,8 @@ export type ProfilePreferences = {
   coordinates: [number, number];
   searchRadius: 5 | 10 | 25 | 50 | 100;
   fulfillment: FulfillmentPreference;
+  salesTaxPercent: number;
+  travelCostPerMile: number;
   priceDropNotifications: boolean;
   backInStockNotifications: boolean;
 };
@@ -18,12 +20,19 @@ export const defaultProfilePreferences: ProfilePreferences = {
   coordinates: [-81.3806, 35.2516],
   searchRadius: 25,
   fulfillment: 'both',
+  salesTaxPercent: 6.75,
+  travelCostPerMile: 0.70,
   priceDropNotifications: true,
   backInStockNotifications: true,
 };
 
 const radii = new Set([5, 10, 25, 50, 100]);
 const fulfillmentOptions = new Set(['both', 'pickup', 'shipping']);
+
+function boundedNumber(value: unknown, minimum: number, maximum: number, fallback: number) {
+  const number = typeof value === 'number' ? value : Number.NaN;
+  return Number.isFinite(number) && number >= minimum && number <= maximum ? number : fallback;
+}
 
 export function normalizeUsZip(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 5);
@@ -47,6 +56,8 @@ export function parseProfilePreferences(raw: string | null): ProfilePreferences 
       coordinates,
       searchRadius: radii.has(parsed.searchRadius) ? parsed.searchRadius : defaultProfilePreferences.searchRadius,
       fulfillment: fulfillmentOptions.has(parsed.fulfillment) ? parsed.fulfillment : defaultProfilePreferences.fulfillment,
+      salesTaxPercent: boundedNumber(parsed.salesTaxPercent, 0, 15, defaultProfilePreferences.salesTaxPercent),
+      travelCostPerMile: boundedNumber(parsed.travelCostPerMile, 0, 5, defaultProfilePreferences.travelCostPerMile),
       priceDropNotifications: typeof parsed.priceDropNotifications === 'boolean' ? parsed.priceDropNotifications : defaultProfilePreferences.priceDropNotifications,
       backInStockNotifications: typeof parsed.backInStockNotifications === 'boolean' ? parsed.backInStockNotifications : defaultProfilePreferences.backInStockNotifications,
     };
