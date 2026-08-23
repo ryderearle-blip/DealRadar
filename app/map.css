@@ -202,7 +202,9 @@
 .store-source { margin-left: 6px; border-left: 1px solid #9ed6b5; padding-left: 6px; color: inherit; font-style: normal; text-decoration: none; }
 .store-source:hover,
 .store-source:focus-visible { text-decoration: underline; }
+.store-direction-links { display: grid; gap: 5px; }
 .store-directions { display: block; border: 0; border-radius: 14px; margin-top: 7px; padding: 7px 10px; background: var(--green); color: #fff; font-size: 10px; text-decoration: none; }
+.store-directions.secondary { margin-top: 0; border: 1px solid #cdd8df; background: #fff; color: #435064; }
 
 .deal-note { display: flex; align-items: center; gap: 9px; margin-top: 9px; padding: 0 5px; }
 .deal-note > span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #e7f7ed; color: var(--green); font-size: 12px; font-weight: 900; }

@@ -36,8 +36,9 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 ## Map features
 
 - Interactive map and nearest-first store list built from real OpenStreetMap locations
+- Approximate straight-line distance from the saved home area for every mapped store
 - Working 25-mile and connected-price filters that update as the map moves
-- Store saving, one-tap directions, and map focus from the store list
+- Store saving, Apple Maps and Google Maps driving directions from home, and map focus from the store list
 - Selected-retailer catalog prices from connected official feeds, with clear inventory caveats
 
 ## Saved features

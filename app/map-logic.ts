@@ -8,6 +8,28 @@ export type FilterableMapStore = {
   coordinates?: [number, number];
 };
 
+export function milesBetween(from: [number, number], to: [number, number]) {
+  const radians = (value: number) => value * Math.PI / 180;
+  const earthRadiusMiles = 3958.8;
+  const latitudeDelta = radians(to[1] - from[1]);
+  const longitudeDelta = radians(to[0] - from[0]);
+  const calculation = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(radians(from[1])) * Math.cos(radians(to[1])) * Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(calculation), Math.sqrt(1 - calculation));
+}
+
+export function storeDistanceLabel(home: [number, number], store: [number, number]) {
+  return `~${milesBetween(home, store).toFixed(1)} mi from home`;
+}
+
+export function appleMapsDirectionsUrl(home: [number, number], store: [number, number]) {
+  return `https://maps.apple.com/?saddr=${home[1]},${home[0]}&daddr=${store[1]},${store[0]}&dirflg=d`;
+}
+
+export function googleMapsDirectionsUrl(home: [number, number], store: [number, number]) {
+  return `https://www.google.com/maps/dir/?api=1&origin=${home[1]},${home[0]}&destination=${store[1]},${store[0]}&travelmode=driving`;
+}
+
 export function retailerMatchesStore(retailer: string, store: string) {
   const retailerName = retailer.toLowerCase().replace(/[^a-z0-9]/g, '');
   const storeName = store.toLowerCase().replace(/[^a-z0-9]/g, '');
