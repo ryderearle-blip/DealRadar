@@ -1,3 +1,5 @@
+import { buildBestBuyProductFilter, classifyProductMatch } from '../../retailer-logic';
+
 type RetailerState = 'connected' | 'needs_credentials' | 'partner_access' | 'unavailable';
 
 type RetailerStatus = {
@@ -16,8 +18,15 @@ type LiveOffer = {
   currency: 'USD';
   availability: string;
   fulfillment: string[];
+  shippingCost: number | null;
   imageUrl: string | null;
   productUrl: string;
+  manufacturer: string | null;
+  modelNumber: string | null;
+  upc: string | null;
+  condition: string | null;
+  matchType: 'exact' | 'similar' | 'possible';
+  matchReason: string;
   source: 'official-api';
   updatedAt: string;
 };
@@ -31,9 +40,17 @@ type BestBuyProduct = {
   inStoreAvailability?: boolean;
   inStorePickup?: boolean;
   shipping?: boolean;
+  shippingCost?: number;
+  freeShipping?: boolean;
+  freeShippingEligible?: boolean;
   image?: string;
   url?: string;
   mobileUrl?: string;
+  manufacturer?: string;
+  modelNumber?: string;
+  upc?: string;
+  condition?: string;
+  priceUpdateDate?: string;
 };
 
 const retailerStatuses = (): RetailerStatus[] => [
@@ -73,23 +90,17 @@ const retailerStatuses = (): RetailerStatus[] => [
   },
 ];
 
-function queryTerms(query: string) {
-  return (query.match(/[a-zA-Z0-9][a-zA-Z0-9.'-]*/g) ?? [])
-    .slice(0, 8)
-    .map(term => term.slice(0, 40));
-}
-
 async function searchBestBuy(query: string): Promise<LiveOffer[]> {
   const apiKey = process.env.BEST_BUY_API_KEY;
   if (!apiKey) return [];
 
-  const terms = queryTerms(query);
-  if (!terms.length) return [];
-
-  const filter = terms.map(term => `search=${encodeURIComponent(term)}`).join('&');
+  const filter = buildBestBuyProductFilter(query);
+  if (!filter) return [];
   const fields = [
     'sku', 'name', 'salePrice', 'regularPrice', 'onlineAvailability',
-    'inStoreAvailability', 'inStorePickup', 'shipping', 'image', 'url', 'mobileUrl',
+    'inStoreAvailability', 'inStorePickup', 'shipping', 'shippingCost', 'freeShipping',
+    'freeShippingEligible', 'image', 'url', 'mobileUrl', 'manufacturer', 'modelNumber',
+    'upc', 'condition', 'priceUpdateDate',
   ].join(',');
   const endpoint = `https://api.bestbuy.com/v1/products(${filter})?format=json&pageSize=8&show=${fields}&apiKey=${encodeURIComponent(apiKey)}`;
   const controller = new AbortController();
@@ -115,6 +126,12 @@ async function searchBestBuy(query: string): Promise<LiveOffer[]> {
         : product.onlineAvailability
           ? 'Available online'
           : 'Availability not confirmed';
+      const match = classifyProductMatch(query, product);
+      const shippingCost = product.freeShipping || product.freeShippingEligible
+        ? 0
+        : Number.isFinite(product.shippingCost)
+          ? Number(product.shippingCost)
+          : null;
 
       return [{
         id: `bestbuy-${product.sku}`,
@@ -125,10 +142,17 @@ async function searchBestBuy(query: string): Promise<LiveOffer[]> {
         currency: 'USD' as const,
         availability,
         fulfillment,
+        shippingCost,
         imageUrl: product.image ?? null,
         productUrl: product.mobileUrl ?? product.url ?? `https://www.bestbuy.com/site/searchpage.jsp?st=${encodeURIComponent(product.name)}`,
+        manufacturer: product.manufacturer ?? null,
+        modelNumber: product.modelNumber ?? null,
+        upc: product.upc ?? null,
+        condition: product.condition ?? null,
+        matchType: match.matchType,
+        matchReason: match.matchReason,
         source: 'official-api' as const,
-        updatedAt,
+        updatedAt: product.priceUpdateDate ?? updatedAt,
       }];
     });
   } finally {

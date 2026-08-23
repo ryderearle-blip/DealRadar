@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { filterAndSortOffers } from './search-logic';
+import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, normalizeBarcode, toggleComparison, updatePriceHistory } from './search-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -28,8 +28,15 @@ type LivePrice = {
   currency: 'USD';
   availability: string;
   fulfillment: string[];
+  shippingCost: number | null;
   imageUrl: string | null;
   productUrl: string;
+  manufacturer: string | null;
+  modelNumber: string | null;
+  upc: string | null;
+  condition: string | null;
+  matchType: 'exact' | 'similar' | 'possible';
+  matchReason: string;
   source: 'official-api';
   updatedAt: string;
 };
@@ -48,7 +55,8 @@ type PriceSearch = {
 };
 
 type SearchFilters = {
-  sort: 'best' | 'price-low' | 'price-high' | 'distance';
+  sort: 'best' | 'price-low' | 'price-high' | 'distance' | 'total-cost';
+  scope: 'both' | 'local' | 'online';
   maxPrice: number | null;
   maxDistance: number | null;
   availability: 'all' | 'available';
@@ -58,12 +66,29 @@ type SearchFilters = {
 
 const emptyFilters: SearchFilters = {
   sort: 'best',
+  scope: 'both',
   maxPrice: null,
   maxDistance: null,
   availability: 'all',
   fulfillment: 'all',
   retailers: [],
 };
+
+type PriceHistoryPoint = { price: number; recordedAt: string };
+type CostBreakdown = { item: number; tax: number; shipping: number | null; travel: number | null; total: number; complete: boolean; method: 'Local pickup' | 'Online' };
+
+const HOME_TAX_RATE = 0.0675;
+const TRAVEL_COST_PER_MILE = 0.70;
+const suggestionCatalog = [
+  { title: 'Sony 55-inch TV', meta: 'Product type', value: 'Sony 55-inch TV' },
+  { title: 'Sony BRAVIA TV', meta: 'Brand and product', value: 'Sony BRAVIA TV' },
+  { title: 'Apple AirPods Pro', meta: 'Product', value: 'Apple AirPods Pro' },
+  { title: 'Nintendo Switch OLED', meta: 'Model family', value: 'Nintendo Switch OLED' },
+  { title: 'Samsung OLED TV', meta: 'Brand and product', value: 'Samsung OLED TV' },
+  { title: 'LG OLED evo TV', meta: 'Brand and product', value: 'LG OLED evo TV' },
+  { title: 'PlayStation 5', meta: 'Product', value: 'PlayStation 5' },
+  { title: 'MacBook Air', meta: 'Product', value: 'MacBook Air' },
+];
 
 const offers: Offer[] = [
   { store: 'Walmart', price: null, distance: '2.4 mi', color: '#1674ea', mark: '✦', detail: 'Price feed not connected', address: '1011 Shelby Rd', coordinates: [-81.3625539, 35.2384283], mapTier: 1 },
@@ -179,6 +204,28 @@ function nearestRetailerDistance(retailer: string) {
   return Math.min(...matchingStores.map(item => milesBetween(HOME, item.coordinates!)));
 }
 
+function costForOffer(item: LivePrice, scope: SearchFilters['scope']): CostBreakdown {
+  const distance = nearestRetailerDistance(item.retailer);
+  return calculateEstimatedTotalCost(item, scope, distance, HOME_TAX_RATE, TRAVEL_COST_PER_MILE);
+}
+
+function recordVerifiedPriceHistory(items: LivePrice[]) {
+  if (typeof window === 'undefined' || !items.length) return;
+  const stored = JSON.parse(window.localStorage.getItem('dealradar-price-history') ?? '{}') as Record<string, PriceHistoryPoint[]>;
+  const now = new Date().toISOString();
+  items.forEach(item => {
+    const history = stored[item.id] ?? [];
+    stored[item.id] = updatePriceHistory(history, item.price, now);
+  });
+  window.localStorage.setItem('dealradar-price-history', JSON.stringify(stored));
+}
+
+function getVerifiedPriceHistory(itemId: string) {
+  if (typeof window === 'undefined') return [];
+  const stored = JSON.parse(window.localStorage.getItem('dealradar-price-history') ?? '{}') as Record<string, PriceHistoryPoint[]>;
+  return stored[itemId] ?? [];
+}
+
 export default function Home() {
   const [tab, setTab] = useState<Tab>('Map');
   const [query, setQuery] = useState('Sony 55-inch TV');
@@ -208,9 +255,50 @@ function Search({ query, setQuery, open }: any) {
   const [filters, setFilters] = useState<SearchFilters>(emptyFilters);
   const [draft, setDraft] = useState<SearchFilters>(emptyFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [historyItem, setHistoryItem] = useState<LivePrice | null>(null);
   const isSearching = String(query).trim().length >= 2;
 
-  const filteredOffers = useMemo(() => filterAndSortOffers(priceSearch.offers, filters, nearestRetailerDistance), [filters, priceSearch.offers]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try { setRecentSearches(JSON.parse(window.localStorage.getItem('dealradar-recent-searches') ?? '[]')); }
+      catch { setRecentSearches([]); }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (priceSearch.status === 'ready') recordVerifiedPriceHistory(priceSearch.offers);
+  }, [priceSearch.offers, priceSearch.status]);
+
+  const commitSearch = (value: string) => {
+    const next = value.trim();
+    if (!next) return;
+    setQuery(next);
+    setSuggestionsOpen(false);
+    setRecentSearches(current => {
+      const updated = [next, ...current.filter(item => item.toLowerCase() !== next.toLowerCase())].slice(0, 6);
+      window.localStorage.setItem('dealradar-recent-searches', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const suggestions = useMemo(() => {
+    const live = priceSearch.offers.map(item => ({ title: item.title, meta: item.modelNumber ? `Model ${item.modelNumber}` : item.retailer, value: item.title }));
+    return buildPredictiveSuggestions(String(query), recentSearches, live, suggestionCatalog);
+  }, [priceSearch.offers, query, recentSearches]);
+
+  const filteredOffers = useMemo(() => filterAndSortOffers(
+    priceSearch.offers,
+    filters,
+    nearestRetailerDistance,
+    item => costForOffer(item, filters.scope).total,
+  ), [filters, priceSearch.offers]);
+  const comparedOffers = compareIds.flatMap(id => priceSearch.offers.find(item => item.id === id) ?? []);
 
   const appliedCount = [
     filters.sort !== 'best', filters.maxPrice !== null, filters.maxDistance !== null,
@@ -219,10 +307,11 @@ function Search({ query, setQuery, open }: any) {
   const beginFiltering = () => { setDraft(filters); setFiltersOpen(true); };
 
   return <section className="page search-page">
-    <SearchBox value={query} setValue={setQuery} placeholder="What are you shopping for?"/>
+    <PredictiveSearchBox value={String(query)} setValue={setQuery} suggestions={suggestions} open={suggestionsOpen} setOpen={setSuggestionsOpen} onSelect={commitSearch} onScan={() => setScannerOpen(true)} onClearRecent={() => { setRecentSearches([]); window.localStorage.removeItem('dealradar-recent-searches'); }}/>
+    <div className="search-scope" role="group" aria-label="Search local or online stores">{(['local','both','online'] as const).map(scope => <button key={scope} className={filters.scope === scope ? 'active' : ''} onClick={() => setFilters(current => ({ ...current, scope }))}>{scope === 'local' ? '⌖ Local' : scope === 'online' ? '⌂ Online' : '◉ Both'}</button>)}</div>
     {!isSearching ? <>
-      <p className="label">RECENT SEARCH</p><button className="pill" onClick={() => setQuery('Sony 55-inch TV')}>◷ Sony 55-inch TV</button>
-      <h2>Popular near you</h2><div className="categories">{[['▰','TVs'],['▱','Laptops'],['◉','Headphones'],['▣','Gaming']].map(x => <button key={x[1]} onClick={() => setQuery(x[1])}><b>{x[0]}</b><span>{x[1]}</span><i>›</i></button>)}</div>
+      {recentSearches.length > 0 && <><p className="label">RECENT SEARCHES</p><div className="recent-pills">{recentSearches.slice(0, 3).map(item => <button className="pill" key={item} onClick={() => commitSearch(item)}>◷ {item}</button>)}</div></>}
+      <h2>Popular near you</h2><div className="categories">{[['▰','TVs'],['▱','Laptops'],['◉','Headphones'],['▣','Gaming']].map(x => <button key={x[1]} onClick={() => commitSearch(x[1])}><b>{x[0]}</b><span>{x[1]}</span><i>›</i></button>)}</div>
     </> : <>
       <div className="search-filter-bar">
         <button className="filter-main" onClick={beginFiltering}><span>☷</span> Filters {appliedCount > 0 && <b>{appliedCount}</b>}</button>
@@ -230,12 +319,14 @@ function Search({ query, setQuery, open }: any) {
         <button className={filters.availability === 'available' ? 'active' : ''} onClick={() => setFilters(current => ({ ...current, availability: current.availability === 'available' ? 'all' : 'available' }))}>In stock</button>
         <button className={filters.maxPrice === 500 ? 'active' : ''} onClick={() => setFilters(current => ({ ...current, maxPrice: current.maxPrice === 500 ? null : 500 }))}>Under $500</button>
       </div>
-      <div className="search-result-heading"><div><small>VERIFIED RETAILER RESULTS</small><h2>{priceSearch.status === 'loading' ? 'Searching…' : `${filteredOffers.length} results`}</h2></div><button onClick={beginFiltering}>{filters.sort === 'best' ? 'Best match' : filters.sort === 'price-low' ? 'Lowest price' : filters.sort === 'price-high' ? 'Highest price' : 'Nearest'}⌄</button></div>
+      <div className="search-result-heading"><div><small>{filters.scope.toUpperCase()} · VERIFIED RETAILER RESULTS</small><h2>{priceSearch.status === 'loading' ? 'Searching…' : `${filteredOffers.length} results`}</h2></div><button onClick={beginFiltering}>{filters.sort === 'best' ? 'Best match' : filters.sort === 'price-low' ? 'Lowest price' : filters.sort === 'price-high' ? 'Highest price' : filters.sort === 'total-cost' ? 'Total cost' : 'Nearest'}⌄</button></div>
       {priceSearch.status === 'loading' && <div className="search-loading"><span/><b>Checking official price feeds</b><small>Prices are never estimated.</small></div>}
       {priceSearch.status === 'error' && <div className="search-no-results"><b>Search is temporarily unavailable</b><span>Try again in a moment.</span></div>}
       {priceSearch.status === 'ready' && filteredOffers.length > 0 && <div className="search-results">{filteredOffers.map(item => {
         const distance = nearestRetailerDistance(item.retailer);
-        return <article key={item.id}><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3><span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><b>Official API</b></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
+        const cost = costForOffer(item, filters.scope);
+        const selected = compareIds.includes(item.id);
+        return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b>Official API</b></div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial total $${cost.total.toFixed(2)}`}<span>{cost.method}</span></em><button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
       })}</div>}
       {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(emptyFilters)}>Reset filters</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
     </>}
@@ -245,7 +336,110 @@ function Search({ query, setQuery, open }: any) {
       onClose={() => setFiltersOpen(false)}
       onApply={() => { setFilters(draft); setFiltersOpen(false); }}
     />}
+    {scannerOpen && <BarcodeScanner
+      onClose={() => setScannerOpen(false)}
+      onFound={code => { commitSearch(code); setScannerOpen(false); }}
+    />}
+    {compareIds.length > 0 && <div className="compare-tray"><span><b>{compareIds.length}</b> selected</span><button disabled={compareIds.length < 2} onClick={() => setCompareOpen(true)}>Compare {compareIds.length < 2 ? 'one more item' : `${compareIds.length} items`}</button><button aria-label="Clear comparison" onClick={() => setCompareIds([])}>×</button></div>}
+    {compareOpen && <CompareSheet
+      items={comparedOffers}
+      scope={filters.scope}
+      onClose={() => setCompareOpen(false)}
+    />}
+    {historyItem && <PriceHistorySheet
+      item={historyItem}
+      onClose={() => setHistoryItem(null)}
+    />}
   </section>;
+}
+
+function PredictiveSearchBox({ value, setValue, suggestions, open, setOpen, onSelect, onScan, onClearRecent }: { value: string; setValue: (value: string) => void; suggestions: { title: string; meta: string; value: string }[]; open: boolean; setOpen: (open: boolean) => void; onSelect: (value: string) => void; onScan: () => void; onClearRecent: () => void }) {
+  return <div className="predictive-search"><div className="searchbox"><b aria-hidden="true">⌕</b><input aria-label="Search products, brands, models, or UPCs" value={value} onChange={event => { setValue(event.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => window.setTimeout(() => setOpen(false), 120)} onKeyDown={event => { if (event.key === 'Enter') onSelect(value); if (event.key === 'Escape') setOpen(false); }} placeholder="Product, brand, model, or UPC" autoComplete="off" enterKeyHint="search"/><button type="button" className="scan-button" onMouseDown={event => event.preventDefault()} onClick={onScan} aria-label="Scan a product barcode">▥<span>Scan</span></button></div>
+    {open && suggestions.length > 0 && <div className="search-suggestions" role="listbox" aria-label="Search suggestions"><div><b>{suggestions.some(item => item.meta === 'Recent search') ? 'Suggestions and recent searches' : 'Suggestions'}</b>{suggestions.some(item => item.meta === 'Recent search') && <button onMouseDown={event => event.preventDefault()} onClick={onClearRecent}>Clear recent</button>}</div>{suggestions.map(item => <button role="option" aria-selected="false" key={`${item.meta}-${item.value}`} onMouseDown={event => event.preventDefault()} onClick={() => onSelect(item.value)}><span>{item.meta === 'Recent search' ? '◷' : item.meta.startsWith('Model') ? '▦' : '⌕'}</span><b>{item.title}<small>{item.meta}</small></b><em>›</em></button>)}</div>}
+  </div>;
+}
+
+type BarcodeDetectorLike = { detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
+type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorLike;
+
+function BarcodeScanner({ onClose, onFound }: { onClose: () => void; onFound: (code: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [manualCode, setManualCode] = useState('');
+  const [status, setStatus] = useState('Starting camera…');
+
+  useEffect(() => {
+    let active = true;
+    let stream: MediaStream | null = null;
+    let scanTimer = 0;
+
+    const start = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera unavailable');
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        if (!active || !videoRef.current) return;
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+        if (!Detector) {
+          setStatus('Camera preview ready. Enter the UPC below on this device.');
+          return;
+        }
+        const detector = new Detector({ formats: ['upc_a', 'upc_e', 'ean_13', 'ean_8'] });
+        setStatus('Center the barcode inside the frame');
+        const scan = async () => {
+          if (!active || !videoRef.current) return;
+          try {
+            const results = await detector.detect(videoRef.current);
+            const code = normalizeBarcode(results[0]?.rawValue ?? '');
+            if (code) { onFound(code); return; }
+          } catch { /* Keep scanning while individual frames are unreadable. */ }
+          scanTimer = window.setTimeout(scan, 350);
+        };
+        scan();
+      } catch {
+        if (active) setStatus('Camera access is unavailable. Enter the UPC manually.');
+      }
+    };
+    start();
+    return () => {
+      active = false;
+      window.clearTimeout(scanTimer);
+      stream?.getTracks().forEach(track => track.stop());
+    };
+  }, [onFound]);
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const code = normalizeBarcode(manualCode);
+    if (code) onFound(code);
+    else setStatus('Enter a valid 8–14 digit UPC or EAN code.');
+  };
+
+  return <div className="filter-backdrop scanner-backdrop" role="presentation"><section className="barcode-sheet" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div className="filter-sheet-head"><div><small>EXACT PRODUCT SEARCH</small><h2 id="scanner-title">Scan barcode</h2></div><button onClick={onClose} aria-label="Close barcode scanner">×</button></div><div className="camera-view"><video ref={videoRef} muted playsInline/><span/><b>UPC / EAN</b></div><p>{status}</p><form onSubmit={submit}><label><span>Enter barcode manually</span><input inputMode="numeric" autoComplete="off" value={manualCode} onChange={event => setManualCode(event.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="8–14 digit code"/></label><button type="submit">Search exact product</button></form><small className="privacy-note">Camera video stays on this device and is never uploaded.</small></section></div>;
+}
+
+function CompareSheet({ items, scope, onClose }: { items: LivePrice[]; scope: SearchFilters['scope']; onClose: () => void }) {
+  return <div className="filter-backdrop compare-backdrop" role="presentation"><section className="compare-sheet" role="dialog" aria-modal="true" aria-labelledby="compare-title"><div className="filter-sheet-head"><div><small>SIDE-BY-SIDE</small><h2 id="compare-title">Compare {items.length} deals</h2></div><button onClick={onClose} aria-label="Close comparison">×</button></div><div className="compare-grid">{items.map(item => {
+    const cost = costForOffer(item, scope);
+    const distance = nearestRetailerDistance(item.retailer);
+    return <article key={item.id}><div className="compare-brand">{item.retailer}</div><h3>{item.title}</h3><dl><div><dt>Item price</dt><dd>${item.price.toFixed(2)}</dd></div><div className="total"><dt>{cost.complete ? 'Estimated total' : 'Partial total'}</dt><dd>${cost.total.toFixed(2)}</dd></div><div><dt>Tax estimate</dt><dd>${cost.tax.toFixed(2)}</dd></div><div><dt>Shipping</dt><dd>{cost.shipping === null ? 'Not provided' : cost.shipping === 0 ? 'Free' : `$${cost.shipping.toFixed(2)}`}</dd></div><div><dt>Round-trip travel</dt><dd>{cost.travel === null ? 'Not applicable' : `$${cost.travel.toFixed(2)}`}</dd></div><div><dt>Distance</dt><dd>{distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</dd></div><div><dt>Availability</dt><dd>{item.availability}</dd></div><div><dt>Fulfillment</dt><dd>{item.fulfillment.join(' / ') || 'Not provided'}</dd></div><div><dt>Model match</dt><dd>{item.matchType}</dd></div><div><dt>Returns</dt><dd><a href={item.productUrl} target="_blank" rel="noreferrer">See retailer policy</a></dd></div></dl></article>;
+  })}</div><p className="cost-disclaimer">Totals use the verified item price, official shipping cost when supplied, a 6.75% location-based tax estimate, and $0.70 per round-trip mile. Confirm tax and shipping at checkout.</p></section></div>;
+}
+
+function PriceHistorySheet({ item, onClose }: { item: LivePrice; onClose: () => void }) {
+  const [history] = useState<PriceHistoryPoint[]>(() => getVerifiedPriceHistory(item.id));
+  const [alertOn, setAlertOn] = useState(() => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true');
+  const prices = history.map(point => point.price);
+  const minimum = Math.min(...prices, item.price);
+  const maximum = Math.max(...prices, item.price);
+  const spread = Math.max(1, maximum - minimum);
+  const toggleAlert = () => {
+    const next = !alertOn;
+    setAlertOn(next);
+    window.localStorage.setItem(`dealradar-alert-${item.id}`, String(next));
+  };
+
+  return <div className="filter-backdrop history-backdrop" role="presentation"><section className="history-sheet" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="filter-sheet-head"><div><small>VERIFIED OBSERVATIONS</small><h2 id="history-title">Price history</h2></div><button onClick={onClose} aria-label="Close price history">×</button></div><h3>{item.title}</h3><div className="history-current"><span>Current official price</span><strong>${item.price.toFixed(2)}</strong></div>{history.length > 1 ? <><div className="history-chart" aria-label={`${history.length} saved price observations`}>{history.map((point, index) => <i key={`${point.recordedAt}-${index}`} style={{ height: `${24 + ((point.price - minimum) / spread) * 58}%` }} title={`${new Date(point.recordedAt).toLocaleDateString()}: $${point.price.toFixed(2)}`}/>)}</div><div className="history-range"><span>Low ${minimum.toFixed(2)}</span><span>High ${maximum.toFixed(2)}</span></div></> : <div className="history-empty"><b>First verified price saved</b><span>DealRadar will build this chart as official prices are observed over time.</span></div>}<button className={`history-alert ${alertOn ? 'active' : ''}`} onClick={toggleAlert}>{alertOn ? '✓ Price alert active' : '♧ Alert me when the price drops'}</button><p>History is recorded from connected official retailer feeds on this device. No past prices are invented.</p></section></div>;
 }
 
 function SearchFilterSheet({ draft, setDraft, onClose, onApply }: { draft: SearchFilters; setDraft: (filters: SearchFilters) => void; onClose: () => void; onApply: () => void }) {
@@ -254,7 +448,7 @@ function SearchFilterSheet({ draft, setDraft, onClose, onApply }: { draft: Searc
   const toggleRetailer = (retailer: string) => update({ retailers: draft.retailers.includes(retailer) ? draft.retailers.filter(item => item !== retailer) : [...draft.retailers, retailer] });
 
   return <div className="filter-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title"><div className="filter-sheet-head"><div><small>REFINE RESULTS</small><h2 id="filter-title">Search filters</h2></div><button onClick={onClose} aria-label="Close filters">×</button></div>
-    <label className="filter-field"><span>Sort results</span><select value={draft.sort} onChange={event => update({ sort: event.target.value as SearchFilters['sort'] })}><option value="best">Best match</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="distance">Distance: nearest first</option></select></label>
+    <label className="filter-field"><span>Sort results</span><select value={draft.sort} onChange={event => update({ sort: event.target.value as SearchFilters['sort'] })}><option value="best">Best match</option><option value="total-cost">Estimated total cost</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="distance">Distance: nearest first</option></select></label>
     <div className="filter-grid"><label className="filter-field"><span>Maximum price</span><select value={draft.maxPrice ?? ''} onChange={event => update({ maxPrice: event.target.value ? Number(event.target.value) : null })}><option value="">Any price</option><option value="100">Under $100</option><option value="250">Under $250</option><option value="500">Under $500</option><option value="1000">Under $1,000</option><option value="2000">Under $2,000</option></select></label><label className="filter-field"><span>Store distance</span><select value={draft.maxDistance ?? ''} onChange={event => update({ maxDistance: event.target.value ? Number(event.target.value) : null })}><option value="">Any distance</option><option value="5">Within 5 miles</option><option value="10">Within 10 miles</option><option value="25">Within 25 miles</option><option value="50">Within 50 miles</option></select></label></div>
     <fieldset><legend>Availability</legend><div className="filter-options">{[['all','Any availability'],['available','In stock only']].map(option => <button key={option[0]} className={draft.availability === option[0] ? 'selected' : ''} onClick={() => update({ availability: option[0] as SearchFilters['availability'] })}>{draft.availability === option[0] ? '✓ ' : ''}{option[1]}</button>)}</div></fieldset>
     <fieldset><legend>Fulfillment</legend><div className="filter-options">{[['all','Any'],['pickup','Pickup'],['shipping','Shipping']].map(option => <button key={option[0]} className={draft.fulfillment === option[0] ? 'selected' : ''} onClick={() => update({ fulfillment: option[0] as SearchFilters['fulfillment'] })}>{draft.fulfillment === option[0] ? '✓ ' : ''}{option[1]}</button>)}</div></fieldset>
