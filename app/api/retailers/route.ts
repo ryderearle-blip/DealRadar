@@ -1,4 +1,5 @@
-import { applyRetailerProbe, buildRetailerStatuses, buildRetailerStatusPayload } from '../../retailer-connections';
+import { applyRetailerProbe, buildRetailerStatuses, buildRetailerStatusPayload } from '../../retailer-connections.ts';
+import { enforceRequestLimit } from '../request-limit.ts';
 
 async function probeBestBuy(apiKey: string) {
   const controller = new AbortController();
@@ -17,9 +18,16 @@ async function probeBestBuy(apiKey: string) {
 }
 
 export async function GET(request: Request) {
+  const probe = new URL(request.url).searchParams.get('probe') === '1';
+  const limited = enforceRequestLimit(request, {
+    bucket: probe ? 'retailer-live-probe' : 'retailer-status',
+    limit: probe ? 6 : 60,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   const apiKey = process.env.BEST_BUY_API_KEY?.trim() ?? '';
   let retailers = buildRetailerStatuses(Boolean(apiKey));
-  const probe = new URL(request.url).searchParams.get('probe') === '1';
   if (probe && apiKey) {
     const checkedAt = new Date().toISOString();
     retailers = applyRetailerProbe(retailers, 'Best Buy', await probeBestBuy(apiKey), checkedAt);

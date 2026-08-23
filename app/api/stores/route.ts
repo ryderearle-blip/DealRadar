@@ -6,6 +6,7 @@ import {
   type OpenStreetMapElement,
   type StoreLocation,
 } from '../../store-discovery.ts';
+import { enforceRequestLimit } from '../request-limit.ts';
 
 type StorePayload = {
   stores: StoreLocation[];
@@ -57,6 +58,9 @@ async function fetchOpenStreetMapElements(query: string) {
 }
 
 export async function GET(request: Request) {
+  const limited = enforceRequestLimit(request, { bucket: 'store-discovery', limit: 60, windowMs: 60_000 });
+  if (limited) return limited;
+
   const bounds = normalizeStoreBounds(new URL(request.url).searchParams);
   if (!bounds) {
     return Response.json(

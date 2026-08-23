@@ -1,5 +1,6 @@
-import { buildBestBuyProductFilter, classifyProductMatch } from '../../retailer-logic';
-import { applyRetailerProbe, buildRetailerStatuses } from '../../retailer-connections';
+import { buildBestBuyProductFilter, classifyProductMatch } from '../../retailer-logic.ts';
+import { applyRetailerProbe, buildRetailerStatuses } from '../../retailer-connections.ts';
+import { enforceRequestLimit } from '../request-limit.ts';
 
 type LiveOffer = {
   id: string;
@@ -116,6 +117,9 @@ async function searchBestBuy(query: string): Promise<LiveOffer[]> {
 }
 
 export async function GET(request: Request) {
+  const limited = enforceRequestLimit(request, { bucket: 'verified-offer-search', limit: 30, windowMs: 60_000 });
+  if (limited) return limited;
+
   const url = new URL(request.url);
   const query = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
   const bestBuyConfigured = Boolean(process.env.BEST_BUY_API_KEY?.trim());

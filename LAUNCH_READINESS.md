@@ -36,7 +36,8 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 - [x] Device-local export and confirmed shopping-data clearing
 - [ ] Publish Terms of Use, Privacy Policy, affiliate disclosures, and data-retention policy
 - [x] Audit all locked dependencies in CI and apply baseline browser security headers
-- [ ] Complete an external security review, secret rotation plan, rate limits, and abuse protection
+- [x] Add baseline per-client request limits to upstream-backed API routes
+- [ ] Complete an external security review, secret rotation plan, and distributed abuse protection
 - [ ] Add error monitoring, availability checks, analytics consent, and retailer-feed health alerts
 - [x] Expose a non-cacheable, secret-free application health endpoint for staging monitors
 - [ ] Complete accessibility, iPhone Safari, Android Chrome, desktop, and slow-network testing

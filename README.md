@@ -80,3 +80,5 @@ Store discovery is served through `/api/stores`. The endpoint accepts a small U.
 Private staging monitors can call `/api/health` for a non-cacheable, secret-free readiness response. Optional retailer setup is reported separately from application availability, so a missing retailer key never masquerades as an app outage.
 
 The release gate audits all locked application and build dependencies for high-severity advisories. Browser responses receive framing, content-type, referrer, permissions, transport, and content-security protections while retaining the map, ZIP lookup, barcode camera, and official image sources DealRadar needs.
+
+Upstream-backed store discovery, offer search, and retailer health probes use bounded per-client request windows with non-cacheable retry responses. The health endpoint remains unrestricted so availability monitors are not mistaken for abusive traffic.
