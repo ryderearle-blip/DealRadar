@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, formatVerificationFreshness, normalizeBarcode, toggleComparison, updatePriceHistory } from './search-logic';
-import { appleMapsDirectionsUrl, filterMappedStores, googleMapsDirectionsUrl, milesBetween, nearestRetailerDistance, retailerMatchesStore, storeDistanceLabel, type MapStoreFilters } from './map-logic';
+import { appleMapsDirectionsUrl, filterMappedStores, googleMapsDirectionsUrl, milesBetween, nearestRetailerDistance, retailerMatchesStore, sortMappedStoresByDistance, storeDistanceLabel, type MapStoreFilters } from './map-logic';
 import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedStores, toggleSavedProduct, toggleSavedStore as toggleSavedStoreRecord, type SavedProductRecord, type SavedSort, type SavedStoreRecord } from './saved-logic';
 import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch, parsePriceWatchSettings, setPriceWatchSetting, type PriceWatchSetting } from './alert-logic';
 import { defaultProfilePreferences, deviceShoppingLocation, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences, type ShoppingLocation } from './profile-logic';
@@ -127,6 +127,33 @@ const offers: Offer[] = [
   { store: 'Best Buy Concord', price: null, distance: '52.4 mi', color: '#f4ce12', mark: 'BEST', detail: 'Official API ready', address: '8111 Concord Mills Blvd', coordinates: [-80.7188018, 35.3684095], mapTier: 3 },
   { store: 'Target Concord', price: null, distance: '55.2 mi', color: '#d92332', mark: '◎', detail: 'No public price API', address: '6150 Bayfield Pkwy', coordinates: [-80.6792366, 35.4170115], mapTier: 3 },
 ];
+
+function storeVisual(name: string) {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('best buy')) return { mark: 'BEST', color: '#f4ce12' };
+  if (normalized.includes('target')) return { mark: '◎', color: '#d92332' };
+  if (normalized.includes('walmart')) return { mark: '✦', color: '#1674ea' };
+  if (normalized.includes('gamestop')) return { mark: 'GS', color: '#d21f2b' };
+  if (normalized.includes('apple')) return { mark: '', color: '#1d1d1f' };
+  const mark = name.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
+  return { mark: mark || 'S', color: '#176b73' };
+}
+
+function mappedStoreOffer(store: StoreLocation, home: [number, number]): Offer {
+  const visual = storeVisual(store.name);
+  return {
+    id: store.id,
+    store: store.name,
+    price: null,
+    distance: storeDistanceLabel(home, store.coordinates),
+    color: visual.color,
+    mark: visual.mark,
+    detail: 'Mapped store · verify price and stock',
+    address: store.address,
+    coordinates: store.coordinates,
+    sourceUrl: store.sourceUrl,
+  };
+}
 
 const MAPLIBRE_VERSION = '5.24.0';
 type MapBounds = { contains: (coordinates: [number, number]) => boolean; getSouth: () => number; getWest: () => number; getNorth: () => number; getEast: () => number };
@@ -385,7 +412,7 @@ export default function Home() {
     {!online && <div className="offline-banner" role="status">Offline · Saved items remain available</div>}
     <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => setTab('Profile')}>● {preferences.locationLabel} {preferences.zipCode}⌄</button>}</div><button className="circle" onClick={() => tab === 'Profile' ? notify('Profile settings are saved on this device') : setTab('Map')} aria-label={tab === 'Profile' ? 'Profile settings status' : 'Open map'}>{tab === 'Profile' ? '⚙' : '➤'}</button></header>
     <div className="content">
-      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} openConnections={() => setTab('Profile')} notify={notify} preferences={preferences} onCheckInventory={setInventoryItem} inventoryChecks={inventoryChecks}/>}
+      {tab === 'Search' && <Search query={query} setQuery={setQuery} openMap={store => { if (store) setOffer(store); setTab('Map'); }} openConnections={() => setTab('Profile')} notify={notify} preferences={preferences} onCheckInventory={setInventoryItem} inventoryChecks={inventoryChecks}/>}
       {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify} preferences={preferences} onCheckInventory={setInventoryItem} inventoryChecks={inventoryChecks}/>}
       {tab === 'Saved' && <Saved
         query={savedQuery}
@@ -443,7 +470,7 @@ function Onboarding({ preferences, onFinish, onUseDefaults }: { preferences: Pro
   </section>;
 }
 
-function Search({ query, setQuery, open, openConnections, notify, preferences, onCheckInventory, inventoryChecks }: { query: string; setQuery: (value: string) => void; open: () => void; openConnections: () => void; notify: (message: string) => void; preferences: ProfilePreferences; onCheckInventory: (item: LivePrice) => void; inventoryChecks: Record<string, VerifiedInventoryCheck> }) {
+function Search({ query, setQuery, openMap, openConnections, notify, preferences, onCheckInventory, inventoryChecks }: { query: string; setQuery: (value: string) => void; openMap: (store?: Offer) => void; openConnections: () => void; notify: (message: string) => void; preferences: ProfilePreferences; onCheckInventory: (item: LivePrice) => void; inventoryChecks: Record<string, VerifiedInventoryCheck> }) {
   const priceSearch = useVerifiedPriceSearch(String(query));
   const defaultFilters = useMemo(() => profileSearchFilters(preferences), [preferences]);
   const [filters, setFilters] = useState<SearchFilters>(() => profileSearchFilters(preferences));
@@ -460,6 +487,7 @@ function Search({ query, setQuery, open, openConnections, notify, preferences, o
   const localSearchRadius = filters.maxDistance ?? preferences.searchRadius;
   const nearbyStoreSearch = useNearbySearchStores(preferences.coordinates, localSearchRadius, isSearching && filters.scope !== 'online');
   const mappedSearchStores = useMemo(() => nearbyStoreSearch.stores.map(store => ({ store: store.name, coordinates: store.coordinates })), [nearbyStoreSearch.stores]);
+  const nearbySearchOffers = useMemo(() => sortMappedStoresByDistance(nearbyStoreSearch.stores.map(store => mappedStoreOffer(store, preferences.coordinates)), preferences.coordinates).filter(store => store.coordinates && milesBetween(preferences.coordinates, store.coordinates) <= localSearchRadius).slice(0, 6), [localSearchRadius, nearbyStoreSearch.stores, preferences.coordinates]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -564,7 +592,7 @@ function Search({ query, setQuery, open, openConnections, notify, preferences, o
       </div>
       <div className="search-result-heading"><div><small>{filters.scope.toUpperCase()} · VERIFIED RETAILER RESULTS</small><h2>{priceSearch.status === 'loading' ? 'Searching…' : `${filteredOffers.length} results`}</h2></div><button onClick={beginFiltering}>{filters.sort === 'best' ? 'Best match' : filters.sort === 'price-low' ? 'Lowest price' : filters.sort === 'price-high' ? 'Highest price' : filters.sort === 'total-cost' ? 'Total cost' : 'Nearest'}⌄</button></div>
       {priceSearch.status === 'ready' && priceSearch.offers.length > 0 && <p className="search-cost-note">Planning totals use your Profile assumptions: {preferences.salesTaxPercent.toFixed(2)}% tax · ${preferences.travelCostPerMile.toFixed(2)}/mi round trip.</p>}
-      {priceSearch.status === 'ready' && priceSearch.offers.length > 0 && filters.scope !== 'online' && <div className={`search-location-evidence ${nearbyStoreSearch.status}`}><i>{nearbyStoreSearch.status === 'loading' ? '◌' : nearbyStoreSearch.status === 'ready' ? '⌖' : '!'}</i><span><b>{nearbyStoreSearch.status === 'loading' ? `Finding real stores near ${preferences.locationLabel}…` : nearbyStoreSearch.status === 'ready' ? `${nearbyStoreSearch.stores.length} real mapped stores checked` : 'Nearby map data unavailable'}</b><small>{nearbyStoreSearch.status === 'ready' ? `Planning distances use mapped stores within ${localSearchRadius} miles; run Check pickup for live stock.` : nearbyStoreSearch.status === 'error' ? 'Local distance stays hidden until a mapped store or official pickup check is available.' : 'Local results will update when nearby stores load.'}</small></span></div>}
+      {priceSearch.status !== 'idle' && filters.scope !== 'online' && <div className={`search-location-evidence ${nearbyStoreSearch.status}`}><i>{nearbyStoreSearch.status === 'loading' ? '◌' : nearbyStoreSearch.status === 'ready' ? '⌖' : '!'}</i><span><b>{nearbyStoreSearch.status === 'loading' ? `Finding real stores near ${preferences.locationLabel}…` : nearbyStoreSearch.status === 'ready' ? `${nearbySearchOffers.length} nearby real stores found` : 'Nearby map data unavailable'}</b><small>{nearbyStoreSearch.status === 'ready' ? `Planning distances use mapped stores within ${localSearchRadius} miles; run Check pickup for live stock.` : nearbyStoreSearch.status === 'error' ? 'Local distance stays hidden until a mapped store or official pickup check is available.' : 'Local results will update when nearby stores load.'}</small></span></div>}
       {priceSearch.status === 'loading' && <div className="search-loading"><span/><b>Checking official price feeds</b><small>Prices are never estimated.</small></div>}
       {priceSearch.status === 'error' && <div className="search-no-results"><b>Search is temporarily unavailable</b><span>Try again in a moment.</span></div>}
       {priceSearch.status === 'ready' && filteredOffers.length > 0 && <div className="search-results">{filteredOffers.map(item => {
@@ -578,7 +606,8 @@ function Search({ query, setQuery, open, openConnections, notify, preferences, o
         const proximity = pickupEvidence.state === 'unavailable' ? 'Online · no pickup stock' : distance === null ? ships ? 'Online · local distance unavailable' : 'Local distance unavailable' : `${distance.toFixed(1)} mi · ${pickupEvidence.state === 'available' ? `retailer pickup near ${preferences.zipCode}` : 'mapped store planning'}`;
         return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {proximity}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b className={freshness.stale ? 'verification-stale' : 'verification-fresh'}>{freshness.label}</b>{pickupEvidence.state !== 'unverified' && <b className={pickupEvidence.state === 'available' ? 'inventory-available' : 'inventory-unavailable'}>{pickupEvidence.state === 'available' ? `✓ ${pickupEvidence.storeCount} in-stock ${pickupEvidence.storeCount === 1 ? 'store' : 'stores'}` : 'No nearby pickup stock'}</b>}</div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial $${cost.total.toFixed(2)} + shipping`}<span>{cost.method === 'Local pickup' ? pickupEvidence.state === 'available' ? `Retailer distance from ZIP ${preferences.zipCode}` : 'Mapped-store planning · verify pickup' : cost.method}</span></em>{item.fulfillment.some(option => option.toLowerCase().includes('pickup')) && <button className="pickup-check" onClick={() => onCheckInventory(item)}>{pickupEvidence.state === 'available' ? `✓ ${pickupEvidence.storeCount} pickup ${pickupEvidence.storeCount === 1 ? 'store' : 'stores'}` : pickupEvidence.state === 'unavailable' ? '↻ Recheck pickup' : '⌖ Check pickup'}</button>}<button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
       })}</div>}
-      {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(defaultFilters)}>Reset filters</button>}{!priceSearch.offers.length && <button onClick={openConnections}>View retailer status</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
+      {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'No verified prices yet'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'An approved retailer feed is still needed for live prices. Nearby real stores remain available below.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(defaultFilters)}>Reset filters</button>}{!priceSearch.offers.length && <button onClick={openConnections}>View retailer status</button>}<button className="map-link" onClick={() => openMap()}>Browse every store on the map</button></div>}
+      {(priceSearch.status === 'ready' || priceSearch.status === 'error') && !priceSearch.offers.length && filters.scope !== 'online' && nearbySearchOffers.length > 0 && <NearbySearchStoreResults stores={nearbySearchOffers} home={preferences.coordinates} radius={localSearchRadius} onOpen={openMap}/>}
     </>}
     {filtersOpen && <SearchFilterSheet
       draft={draft}
@@ -605,6 +634,10 @@ function Search({ query, setQuery, open, openConnections, notify, preferences, o
       onClose={() => setHistoryItem(null)}
     />}
   </section>;
+}
+
+function NearbySearchStoreResults({ stores, home, radius, onOpen }: { stores: Offer[]; home: [number, number]; radius: number; onOpen: (store: Offer) => void }) {
+  return <section className="nearby-search-stores" aria-labelledby="nearby-search-title"><div className="nearby-search-head"><div><small>REAL MAPPED LOCATIONS</small><h2 id="nearby-search-title">Nearby stores to check</h2></div><span>Within {radius} mi</span></div><p>These electronics and department stores may carry the item. Their location is mapped, but price and stock are not verified.</p><div className="nearby-search-list">{stores.map(store => <article key={store.id ?? store.store}><b className="nearby-store-logo" style={{ background: store.color }}>{store.mark}</b><span><strong>{store.store}</strong><small>{store.coordinates ? storeDistanceLabel(home, store.coordinates) : store.distance}</small><em>{store.address}</em><nav><button onClick={() => onOpen(store)}>Show on map</button>{store.coordinates && <><a href={appleMapsDirectionsUrl(home, store.coordinates)} target="_blank" rel="noreferrer">Apple Maps</a><a href={googleMapsDirectionsUrl(home, store.coordinates)} target="_blank" rel="noreferrer">Google Maps</a></>}{store.sourceUrl && <a href={store.sourceUrl} target="_blank" rel="noreferrer">Verify source</a>}</nav></span></article>)}</div><MapDataAttribution list/></section>;
 }
 
 function PredictiveSearchBox({ value, setValue, suggestions, open, setOpen, onSelect, onScan, onClearRecent }: { value: string; setValue: (value: string) => void; suggestions: { title: string; meta: string; value: string }[]; open: boolean; setOpen: (open: boolean) => void; onSelect: (value: string) => void; onScan: () => void; onClearRecent: () => void }) {
@@ -784,6 +817,7 @@ function MapDataAttribution({ list = false }: { list?: boolean }) {
 function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetailers, onVisibleStores, active, focusRequest, home, homePrecision }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void; filters: MapStoreFilters; verifiedRetailers: string[]; onVisibleStores: (stores: Offer[]) => void; active: boolean; focusRequest: MapFocusRequest; home: [number, number]; homePrecision: ProfilePreferences['locationPrecision'] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const initialFocusRef = useRef(focusRequest);
   const selectedOfferRef = useRef(offer);
   const filtersRef = useRef(filters);
   const verifiedRetailersRef = useRef(verifiedRetailers);
@@ -832,8 +866,8 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       const activeMap = new maplibregl.Map({
         container: containerRef.current,
         style: 'https://tiles.openfreemap.org/styles/liberty',
-        center: home,
-        zoom: 10.35,
+        center: initialFocusRef.current?.coordinates ?? home,
+        zoom: initialFocusRef.current ? 12 : 10.35,
         minZoom: 3.4,
         maxZoom: 18,
         maxBounds: [[-171, 18], [-66, 72]],
@@ -924,17 +958,6 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       };
       visibilityUpdaterRef.current = updateVisibleStores;
 
-      const storeVisual = (name: string) => {
-        const normalized = name.toLowerCase();
-        if (normalized.includes('best buy')) return { mark: 'BEST', color: '#f4ce12' };
-        if (normalized.includes('target')) return { mark: '◎', color: '#d92332' };
-        if (normalized.includes('walmart')) return { mark: '✦', color: '#1674ea' };
-        if (normalized.includes('gamestop')) return { mark: 'GS', color: '#d21f2b' };
-        if (normalized.includes('apple')) return { mark: '', color: '#1d1d1f' };
-        const mark = name.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
-        return { mark: mark || 'S', color: '#176b73' };
-      };
-
       const refreshRealStores = async () => {
         if (cancelled) return;
         const zoom = activeMap.getZoom();
@@ -993,19 +1016,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
             const [longitude, latitude] = store.coordinates;
             const duplicate = offers.some(item => item.coordinates && item.store.toLowerCase().includes(store.name.toLowerCase()) && Math.abs(item.coordinates[0] - longitude) < .01 && Math.abs(item.coordinates[1] - latitude) < .01);
             if (duplicate) return [];
-            const visual = storeVisual(store.name);
-            return [{
-              id: store.id,
-              store: store.name,
-              price: null,
-              distance: storeDistanceLabel(home, store.coordinates),
-              color: visual.color,
-              mark: visual.mark,
-              detail: 'Price feed not connected',
-              address: store.address,
-              coordinates: store.coordinates,
-              sourceUrl: store.sourceUrl,
-            } satisfies Offer];
+            return [mappedStoreOffer(store, home)];
           });
           storeCache.set(cacheKey, realStores);
           return realStores;
@@ -1094,7 +1105,7 @@ function Map({ query, setQuery, offer, setOffer, notify, preferences, onCheckInv
   const [display, setDisplay] = useState<'map' | 'list'>('map');
   const [mapFilters, setMapFilters] = useState<MapStoreFilters>({ verifiedOnly: false, withinMiles: null });
   const [visibleStores, setVisibleStores] = useState<Offer[]>([]);
-  const [focusRequest, setFocusRequest] = useState<MapFocusRequest>(null);
+  const [focusRequest, setFocusRequest] = useState<MapFocusRequest>(() => offer.id && offer.coordinates ? { id: offer.id, coordinates: offer.coordinates, nonce: Date.now() } : null);
   const [savedStores, setSavedStores] = useState<SavedStoreRecord[]>([]);
   const verifiedRetailers = useMemo(() => [...new Set(prices.offers.map(item => item.retailer))], [prices.offers]);
   const selectedSearch = useMemo(() => ({ ...prices, offers: prices.offers.filter(item => retailerMatchesStore(item.retailer, offer.store)) }), [offer.store, prices]);

@@ -42,6 +42,14 @@ export function nearestRetailerDistance<T extends { store: string; coordinates?:
   return Math.min(...matchingStores.map(store => milesBetween(home, store.coordinates!)));
 }
 
+export function sortMappedStoresByDistance<T extends { coordinates?: [number, number] }>(stores: T[], home: [number, number]) {
+  return [...stores].sort((first, second) => {
+    const firstDistance = first.coordinates ? milesBetween(home, first.coordinates) : Infinity;
+    const secondDistance = second.coordinates ? milesBetween(home, second.coordinates) : Infinity;
+    return firstDistance - secondDistance;
+  });
+}
+
 export function filterMappedStores<T extends FilterableMapStore>(stores: T[], filters: MapStoreFilters, verifiedRetailers: string[], distanceFor: (store: T) => number | null) {
   return stores.filter(store => {
     if (filters.verifiedOnly && !verifiedRetailers.some(retailer => retailerMatchesStore(retailer, store.store))) return false;

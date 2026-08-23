@@ -60,3 +60,12 @@ test('search planning distances come from nearby mapped stores instead of the st
   assert.match(clientPage, /mapped store planning/);
   assert.doesNotMatch(clientPage, /function nearestRetailerDistance\(/);
 });
+
+test('search offers a source-backed store path that focuses the exact map location', async () => {
+  const clientPage = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  assert.match(clientPage, /function NearbySearchStoreResults/);
+  assert.match(clientPage, /onClick=\{\(\) => onOpen\(store\)\}>Show on map/);
+  assert.match(clientPage, />Verify source<\/a>/);
+  assert.match(clientPage, /center: initialFocusRef\.current\?\.coordinates \?\? home/);
+  assert.match(clientPage, /zoom: initialFocusRef\.current \? 12 : 10\.35/);
+});

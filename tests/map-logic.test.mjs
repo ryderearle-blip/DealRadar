@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appleMapsDirectionsUrl, filterMappedStores, googleMapsDirectionsUrl, milesBetween, nearestRetailerDistance, retailerMatchesStore, storeDistanceLabel } from '../app/map-logic.ts';
+import { appleMapsDirectionsUrl, filterMappedStores, googleMapsDirectionsUrl, milesBetween, nearestRetailerDistance, retailerMatchesStore, sortMappedStoresByDistance, storeDistanceLabel } from '../app/map-logic.ts';
 
 const stores = [
   { store: 'Best Buy Hickory', miles: 14 },
@@ -36,6 +36,16 @@ test('finds the nearest matching retailer only from supplied real stores', () =>
   assert.ok(distance > 5 && distance < 6);
   assert.equal(nearestRetailerDistance('Amazon', [-81.3, 35.2], mapped), null);
   assert.equal(nearestRetailerDistance('Best Buy', [-81.3, 35.2], []), null);
+});
+
+test('orders mapped stores by real distance without mutating the source list', () => {
+  const source = [
+    { store: 'Far', coordinates: [-80.9, 35.2] },
+    { store: 'Unknown' },
+    { store: 'Near', coordinates: [-81.29, 35.2] },
+  ];
+  assert.deepEqual(sortMappedStoresByDistance(source, [-81.3, 35.2]).map(store => store.store), ['Near', 'Far', 'Unknown']);
+  assert.equal(source[0].store, 'Far');
 });
 
 test('builds Apple and Google driving directions from the saved home area', () => {
