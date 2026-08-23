@@ -288,6 +288,7 @@
 .live-prices article span { min-width: 0; }
 .live-prices article span b { display: block; overflow: hidden; color: var(--ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .live-prices article small { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; }
+.live-prices article .map-price-freshness { color: var(--blue); font-weight: 750; }
 .live-prices article strong { color: var(--green); font-size: 14px; text-align: right; }
 .live-prices article a { display: block; margin-top: 3px; color: var(--blue); font-size: 9px; text-decoration: none; }
 

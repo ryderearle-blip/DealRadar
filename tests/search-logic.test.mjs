@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, normalizeBarcode, toggleComparison, updatePriceHistory } from '../app/search-logic.ts';
+import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, formatVerificationFreshness, normalizeBarcode, toggleComparison, updatePriceHistory } from '../app/search-logic.ts';
 
 const offers = [
   { id: 'bestbuy', retailer: 'Best Buy', price: 799, availability: 'Available in stores', fulfillment: ['Store pickup', 'Shipping'] },
@@ -25,6 +25,14 @@ test('sorts verified offers by price and nearest physical store', () => {
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, sort: 'price-low' }, distanceFor).map(item => item.id), ['walmart', 'amazon', 'bestbuy']);
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, sort: 'distance' }, distanceFor).map(item => item.id), ['walmart', 'bestbuy', 'amazon']);
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, sort: 'total-cost' }, distanceFor, item => ({ bestbuy: 860, amazon: 810, walmart: 830 })[item.id]).map(item => item.id), ['amazon', 'walmart', 'bestbuy']);
+  assert.deepEqual(filterAndSortOffers(offers, { ...defaults, sort: 'total-cost' }, distanceFor, item => item.id === 'amazon' ? { total: 700, complete: false } : { total: item.price + 50, complete: true }).map(item => item.id), ['walmart', 'bestbuy', 'amazon']);
+});
+
+test('labels price verification age and flags saved observations after 24 hours', () => {
+  const now = Date.parse('2026-08-23T12:00:00.000Z');
+  assert.deepEqual(formatVerificationFreshness('2026-08-23T11:48:00.000Z', now), { label: 'Verified 12 min ago', stale: false, ageMs: 720_000 });
+  assert.equal(formatVerificationFreshness('2026-08-22T11:59:00.000Z', now).stale, true);
+  assert.deepEqual(formatVerificationFreshness('not-a-date', now), { label: 'Verification time unavailable', stale: true, ageMs: null });
 });
 
 test('calculates total cost from item price, tax, verified shipping, and round-trip travel', () => {

@@ -27,6 +27,29 @@ export type EstimatedCost = {
 
 export type SearchSuggestion = { title: string; meta: string; value: string };
 
+export type VerificationFreshness = {
+  label: string;
+  stale: boolean;
+  ageMs: number | null;
+};
+
+const STALE_PRICE_AGE_MS = 24 * 60 * 60 * 1000;
+
+export function formatVerificationFreshness(verifiedAt: string | null | undefined, now = Date.now()): VerificationFreshness {
+  const timestamp = verifiedAt ? Date.parse(verifiedAt) : Number.NaN;
+  if (!Number.isFinite(timestamp)) return { label: 'Verification time unavailable', stale: true, ageMs: null };
+  const ageMs = Math.max(0, now - timestamp);
+  const stale = ageMs > STALE_PRICE_AGE_MS;
+  const minutes = Math.floor(ageMs / 60_000);
+  const hours = Math.floor(ageMs / 3_600_000);
+  const days = Math.floor(ageMs / 86_400_000);
+  if (minutes < 1) return { label: 'Verified just now', stale, ageMs };
+  if (minutes < 60) return { label: `Verified ${minutes} min ago`, stale, ageMs };
+  if (hours < 24) return { label: `Verified ${hours} hr ago`, stale, ageMs };
+  if (days < 7) return { label: `Verified ${days} ${days === 1 ? 'day' : 'days'} ago`, stale, ageMs };
+  return { label: `Last verified ${new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, stale, ageMs };
+}
+
 export function buildPredictiveSuggestions(query: string, recent: string[], live: SearchSuggestion[], catalog: SearchSuggestion[]) {
   const typed = query.trim().toLowerCase();
   const recentSuggestions = recent.map(item => ({ title: item, meta: 'Recent search', value: item }));
@@ -81,7 +104,7 @@ export function calculateEstimatedTotalCost(item: { price: number; shippingCost:
   return { item: item.price, tax, shipping: null, travel: null, total: item.price + tax, complete: false, method: scope === 'local' ? 'Local pickup' : 'Online' };
 }
 
-export function filterAndSortOffers<T extends FilterableOffer>(offers: T[], filters: FilterValues, distanceFor: (retailer: string) => number | null, totalFor?: (item: T) => number) {
+export function filterAndSortOffers<T extends FilterableOffer>(offers: T[], filters: FilterValues, distanceFor: (retailer: string) => number | null, totalFor?: (item: T) => number | Pick<EstimatedCost, 'total' | 'complete'>) {
   const matches = offers.filter(item => {
     const distance = distanceFor(item.retailer);
     const hasPickup = item.fulfillment.some(option => option.toLowerCase().includes('pickup')) && distance !== null;
@@ -100,7 +123,14 @@ export function filterAndSortOffers<T extends FilterableOffer>(offers: T[], filt
     if (filters.sort === 'price-low') return first.price - second.price;
     if (filters.sort === 'price-high') return second.price - first.price;
     if (filters.sort === 'distance') return (distanceFor(first.retailer) ?? Infinity) - (distanceFor(second.retailer) ?? Infinity);
-    if (filters.sort === 'total-cost') return (totalFor?.(first) ?? first.price) - (totalFor?.(second) ?? second.price);
+    if (filters.sort === 'total-cost') {
+      const firstValue = totalFor?.(first) ?? first.price;
+      const secondValue = totalFor?.(second) ?? second.price;
+      const firstCost = typeof firstValue === 'number' ? { total: firstValue, complete: true } : firstValue;
+      const secondCost = typeof secondValue === 'number' ? { total: secondValue, complete: true } : secondValue;
+      if (firstCost.complete !== secondCost.complete) return firstCost.complete ? -1 : 1;
+      return firstCost.total - secondCost.total;
+    }
     return 0;
   });
 }

@@ -22,6 +22,7 @@ type LiveOffer = {
   matchReason: string;
   source: 'official-api';
   updatedAt: string;
+  sourceUpdatedAt: string | null;
 };
 
 type BestBuyProduct = {
@@ -69,7 +70,7 @@ async function searchBestBuy(query: string): Promise<LiveOffer[]> {
     });
     if (!response.ok) throw new Error(`Best Buy returned ${response.status}`);
     const data = await response.json() as { products?: BestBuyProduct[] };
-    const updatedAt = new Date().toISOString();
+    const checkedAt = new Date().toISOString();
 
     return (data.products ?? []).flatMap(product => {
       if (!product.sku || !product.name || !Number.isFinite(product.salePrice)) return [];
@@ -108,7 +109,8 @@ async function searchBestBuy(query: string): Promise<LiveOffer[]> {
         matchType: match.matchType,
         matchReason: match.matchReason,
         source: 'official-api' as const,
-        updatedAt: product.priceUpdateDate ?? updatedAt,
+        updatedAt: checkedAt,
+        sourceUpdatedAt: product.priceUpdateDate ?? null,
       }];
     });
   } finally {
