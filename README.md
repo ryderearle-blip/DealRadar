@@ -13,6 +13,8 @@ DealRadar compares verified retailer prices with real U.S. store locations. The 
 | Apple | Location only | Apple developer APIs do not expose Apple Store hardware pricing |
 | Micro Center | Location only | No public product and store-inventory API is documented |
 
+The in-app Retailer connections panel reads `/api/retailers`. A configured key is not labeled live until a server-side probe succeeds; secret values are never returned to the browser.
+
 ## Local setup
 
 Copy `.env.example` to `.env.local`, add approved retailer credentials, then run the existing development command. Credentials are read only by the server-side `/api/offers` endpoint and must never use a `NEXT_PUBLIC_` prefix.
@@ -63,3 +65,5 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Offline status feedback and live Saved/Alerts navigation counts
 - Replayable product tour from Profile
 - Installable mobile-app manifest, iPhone safe-area support, and standalone display metadata
+
+See [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) for the remaining production requirements and current prototype limits.

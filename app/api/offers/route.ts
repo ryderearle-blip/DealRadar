@@ -1,13 +1,5 @@
 import { buildBestBuyProductFilter, classifyProductMatch } from '../../retailer-logic';
-
-type RetailerState = 'connected' | 'needs_credentials' | 'partner_access' | 'unavailable';
-
-type RetailerStatus = {
-  retailer: string;
-  state: RetailerState;
-  message: string;
-  signupUrl?: string;
-};
+import { applyRetailerProbe, buildRetailerStatuses } from '../../retailer-connections';
 
 type LiveOffer = {
   id: string;
@@ -52,43 +44,6 @@ type BestBuyProduct = {
   condition?: string;
   priceUpdateDate?: string;
 };
-
-const retailerStatuses = (): RetailerStatus[] => [
-  {
-    retailer: 'Best Buy',
-    state: process.env.BEST_BUY_API_KEY ? 'connected' : 'needs_credentials',
-    message: process.env.BEST_BUY_API_KEY ? 'Official catalog connected' : 'API key required',
-    signupUrl: 'https://developer.bestbuy.com/',
-  },
-  {
-    retailer: 'Amazon',
-    state: 'partner_access',
-    message: 'Approved Associates and Creators API access required',
-    signupUrl: 'https://affiliate-program.amazon.com/creatorsapi/docs/en-us/introduction',
-  },
-  {
-    retailer: 'Walmart',
-    state: 'partner_access',
-    message: 'Marketplace partner approval and OAuth credentials required',
-    signupUrl: 'https://developer.walmart.com/us-marketplace/docs/integrate-with-marketplace-apis',
-  },
-  {
-    retailer: 'Target',
-    state: 'unavailable',
-    message: 'No public consumer catalog and price API is documented',
-    signupUrl: 'https://developer.target.com/',
-  },
-  {
-    retailer: 'Apple',
-    state: 'unavailable',
-    message: 'No public Apple Store hardware price API is documented',
-  },
-  {
-    retailer: 'Micro Center',
-    state: 'unavailable',
-    message: 'No public product and store inventory API is documented',
-  },
-];
 
 async function searchBestBuy(query: string): Promise<LiveOffer[]> {
   const apiKey = process.env.BEST_BUY_API_KEY;
@@ -163,7 +118,8 @@ async function searchBestBuy(query: string): Promise<LiveOffer[]> {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const query = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
-  const retailers = retailerStatuses();
+  const bestBuyConfigured = Boolean(process.env.BEST_BUY_API_KEY?.trim());
+  let retailers = buildRetailerStatuses(bestBuyConfigured);
 
   if (query.length < 2) {
     return Response.json({ query, offers: [], retailers, error: 'Enter at least two characters.' }, { status: 400 });
@@ -174,8 +130,10 @@ export async function GET(request: Request) {
 
   try {
     offers = await searchBestBuy(query);
+    if (bestBuyConfigured) retailers = applyRetailerProbe(retailers, 'Best Buy', true, new Date().toISOString());
   } catch {
     errors.push({ retailer: 'Best Buy', message: 'The live price feed is temporarily unavailable.' });
+    if (bestBuyConfigured) retailers = applyRetailerProbe(retailers, 'Best Buy', false, new Date().toISOString());
   }
 
   return Response.json(

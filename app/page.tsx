@@ -7,6 +7,7 @@ import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedS
 import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch, parsePriceWatchSettings, setPriceWatchSetting, type PriceWatchSetting } from './alert-logic';
 import { defaultProfilePreferences, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences } from './profile-logic';
 import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './onboarding-logic';
+import type { RetailerStatus } from './retailer-connections';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -46,12 +47,7 @@ type LivePrice = {
   updatedAt: string;
 };
 
-type RetailerConnection = {
-  retailer: string;
-  state: 'connected' | 'needs_credentials' | 'partner_access' | 'unavailable';
-  message: string;
-  signupUrl?: string;
-};
+type RetailerConnection = RetailerStatus;
 
 type PriceSearch = {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -292,7 +288,7 @@ export default function Home() {
     {!online && <div className="offline-banner" role="status">Offline · Saved items remain available</div>}
     <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => setTab('Profile')}>● {preferences.locationLabel} {preferences.zipCode}⌄</button>}</div><button className="circle" onClick={() => tab === 'Profile' ? notify('Profile settings are saved on this device') : setTab('Map')} aria-label={tab === 'Profile' ? 'Profile settings status' : 'Open map'}>{tab === 'Profile' ? '⚙' : '➤'}</button></header>
     <div className="content">
-      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} notify={notify} preferences={preferences}/>}
+      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} openConnections={() => setTab('Profile')} notify={notify} preferences={preferences}/>}
       {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify} preferences={preferences}/>}
       {tab === 'Saved' && <Saved query={savedQuery} setQuery={setSavedQuery} notify={notify} shopProduct={(title: string) => { setQuery(title); setTab('Search'); }} browseStores={() => setTab('Map')} openStore={(store: SavedStoreRecord) => { setOffer({ ...store, price: null }); setTab('Map'); }}/>}
       {tab === 'Alerts' && <Alerts
@@ -341,7 +337,7 @@ function Onboarding({ preferences, onFinish, onUseDefaults }: { preferences: Pro
   </section>;
 }
 
-function Search({ query, setQuery, open, notify, preferences }: { query: string; setQuery: (value: string) => void; open: () => void; notify: (message: string) => void; preferences: ProfilePreferences }) {
+function Search({ query, setQuery, open, openConnections, notify, preferences }: { query: string; setQuery: (value: string) => void; open: () => void; openConnections: () => void; notify: (message: string) => void; preferences: ProfilePreferences }) {
   const priceSearch = useVerifiedPriceSearch(String(query));
   const defaultFilters = useMemo(() => profileSearchFilters(preferences), [preferences]);
   const [filters, setFilters] = useState<SearchFilters>(() => profileSearchFilters(preferences));
@@ -456,7 +452,7 @@ function Search({ query, setQuery, open, notify, preferences }: { query: string;
         const saved = savedProducts.some(savedItem => savedItem.id === item.id);
         return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b>Official API</b></div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial total $${cost.total.toFixed(2)}`}<span>{cost.method}</span></em><button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
       })}</div>}
-      {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(defaultFilters)}>Reset filters</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
+      {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(defaultFilters)}>Reset filters</button>}{!priceSearch.offers.length && <button onClick={openConnections}>View retailer status</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
     </>}
     {filtersOpen && <SearchFilterSheet
       draft={draft}
@@ -1068,13 +1064,14 @@ function SavedEmpty({ filtered, type, clear, browse }: { filtered: boolean; type
 type AlertCheckState = {
   status: 'idle' | 'checking' | 'ready' | 'error';
   offers: Record<string, LivePrice | null>;
+  connections: Record<string, RetailerStatus | null>;
   checkedAt: string | null;
 };
 
 function Alerts({ notify, openSaved, shopProduct, preferences }: { notify: (message: string) => void; openSaved: () => void; shopProduct: (title: string) => void; preferences: ProfilePreferences }) {
   const [products, setProducts] = useState<SavedProductRecord[]>([]);
   const [settings, setSettings] = useState<PriceWatchSetting[]>([]);
-  const [check, setCheck] = useState<AlertCheckState>({ status: 'idle', offers: {}, checkedAt: null });
+  const [check, setCheck] = useState<AlertCheckState>({ status: 'idle', offers: {}, connections: {}, checkedAt: null });
   const [editing, setEditing] = useState<SavedProductRecord | null>(null);
 
   useEffect(() => {
@@ -1096,25 +1093,27 @@ function Alerts({ notify, openSaved, shopProduct, preferences }: { notify: (mess
       const entries = await Promise.all(products.map(async product => {
         try {
           const response = await fetch(`/api/offers?q=${encodeURIComponent(product.modelNumber || product.title)}`);
-          if (!response.ok) return [product.id, null] as const;
-          const data = await response.json() as { offers?: LivePrice[] };
+          if (!response.ok) return [product.id, null, null] as const;
+          const data = await response.json() as { offers?: LivePrice[]; retailers?: RetailerStatus[] };
           const current = chooseVerifiedAlertOffer(product, data.offers ?? []) as LivePrice | null;
           if (current) recordVerifiedPriceHistory([current]);
-          return [product.id, current] as const;
+          const connection = data.retailers?.find(item => item.retailer.toLowerCase() === product.retailer.toLowerCase()) ?? null;
+          return [product.id, current, connection] as const;
         } catch {
-          return [product.id, null] as const;
+          return [product.id, null, null] as const;
         }
       }));
       const checkedAt = new Date().toISOString();
       const nextSettings = settings.map(item => ({ ...item, lastCheckedAt: checkedAt }));
-      const nextOffers = Object.fromEntries(entries);
+      const nextOffers = Object.fromEntries(entries.map(([id, offer]) => [id, offer]));
+      const nextConnections = Object.fromEntries(entries.map(([id, , connection]) => [id, connection]));
       const triggered = products.filter(product => {
         const setting = nextSettings.find(item => item.productId === product.id);
         const effective = setting ? { ...setting, backInStock: setting.backInStock && preferences.backInStockNotifications } : null;
         return effective && evaluatePriceWatch(product, nextOffers[product.id], effective).status === 'triggered';
       }).length;
       setSettings(nextSettings);
-      setCheck({ status: 'ready', offers: nextOffers, checkedAt });
+      setCheck({ status: 'ready', offers: nextOffers, connections: nextConnections, checkedAt });
       window.localStorage.setItem('dealradar-alert-settings', JSON.stringify(nextSettings));
       notify(triggered ? `${triggered} verified ${triggered === 1 ? 'deal' : 'deals'} found` : 'Verified price check complete');
     } catch {
@@ -1143,7 +1142,7 @@ function Alerts({ notify, openSaved, shopProduct, preferences }: { notify: (mess
     const setting = settings.find(item => item.productId === product.id) ?? ensurePriceWatchSettings([product], [], new Date().toISOString())[0];
     const current = check.offers[product.id] ?? null;
     const effective = { ...setting, backInStock: setting.backInStock && preferences.backInStockNotifications };
-    return { product, setting, current, evaluation: evaluatePriceWatch(product, current, effective) };
+    return { product, setting, current, connection: check.connections[product.id] ?? null, evaluation: evaluatePriceWatch(product, current, effective) };
   });
   const triggeredCount = check.status === 'ready' ? evaluations.filter(item => item.evaluation.status === 'triggered').length : 0;
 
@@ -1153,10 +1152,11 @@ function Alerts({ notify, openSaved, shopProduct, preferences }: { notify: (mess
       <article className={`alert-summary ${triggeredCount ? 'has-deals' : ''}`}><div><b>{triggeredCount ? '✓' : '♧'}</b><span><small>{triggeredCount ? 'VERIFIED DEAL FOUND' : 'PRICE WATCHES READY'}</small><h3>{triggeredCount ? `${triggeredCount} ${triggeredCount === 1 ? 'price drop meets' : 'price drops meet'} your target` : `${products.length} ${products.length === 1 ? 'product' : 'products'} being watched`}</h3><p>{check.checkedAt ? `Last checked ${new Date(check.checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Check connected feeds for the latest official prices.'}</p></span></div><button disabled={check.status === 'checking'} onClick={checkFeeds}>{check.status === 'checking' ? 'Checking official feeds…' : 'Check verified feeds'}</button><small>{preferences.priceDropNotifications ? 'Checks use official retailer results only while this prototype is open.' : 'Price-drop notifications are paused in Profile; verified checks still work.'} DealRadar never invents a price drop.</small></article>
       {check.status === 'error' && <div className="alert-check-error">Price feeds could not be checked. Try again in a moment.</div>}
       <div className="alerts-list-head"><h3>Watching</h3><span>{products.length} active</span></div>
-      <div className="watch-list">{evaluations.map(({ product, setting, current, evaluation }) => {
+      <div className="watch-list">{evaluations.map(({ product, setting, current, connection, evaluation }) => {
         const ready = check.status === 'ready';
         const targetLabel = setting.targetPrice === null ? 'Any verified drop' : `$${setting.targetPrice.toFixed(2)} or less`;
-        return <article key={product.id} className={ready && evaluation.status === 'triggered' ? 'triggered' : ''}><div className="watch-brand">{product.retailer === 'Best Buy' ? 'BEST' : product.retailer.slice(0, 2).toUpperCase()}</div><div className="watch-copy"><small>{product.retailer} · {targetLabel}</small><h3>{product.title}</h3><div className="watch-prices"><span><small>Saved at</small><b>${product.price.toFixed(2)}</b></span><i>→</i><span><small>Latest verified</small><b>{ready && current ? `$${current.price.toFixed(2)}` : '—'}</b></span></div><p className={`watch-state ${ready ? evaluation.status : 'idle'}`}>{check.status === 'checking' ? 'Checking retailer feed…' : !ready ? 'Ready for a verified check' : evaluation.status === 'triggered' ? `Target met${evaluation.savings ? ` · Save $${evaluation.savings.toFixed(2)}` : ' · Back in stock'}` : evaluation.status === 'unavailable' ? 'No exact verified match returned' : 'Watching · Target not reached'}</p><div className="watch-actions"><button onClick={() => setEditing(product)}>Adjust target</button><button onClick={() => shopProduct(product.title)}>Search product</button>{current ? <a href={current.productUrl} target="_blank" rel="noreferrer">View deal ›</a> : <a href={product.productUrl} target="_blank" rel="noreferrer">Saved deal ›</a>}</div></div><button className="watch-menu" onClick={() => disableWatch(product)} aria-label={`Turn off price watch for ${product.title}`}>×</button></article>;
+        const unavailableMessage = !connection ? 'Retailer status unavailable' : connection.health === 'failed' ? 'Retailer live check failed' : connection.state === 'needs_credentials' ? 'Retailer credentials needed' : connection.state === 'partner_access' ? 'Partner access required' : connection.state === 'unavailable' ? 'No public price API · location only' : 'No exact verified match returned';
+        return <article key={product.id} className={ready && evaluation.status === 'triggered' ? 'triggered' : ''}><div className="watch-brand">{product.retailer === 'Best Buy' ? 'BEST' : product.retailer.slice(0, 2).toUpperCase()}</div><div className="watch-copy"><small>{product.retailer} · {targetLabel}</small><h3>{product.title}</h3><div className="watch-prices"><span><small>Saved at</small><b>${product.price.toFixed(2)}</b></span><i>→</i><span><small>Latest verified</small><b>{ready && current ? `$${current.price.toFixed(2)}` : '—'}</b></span></div><p className={`watch-state ${ready ? evaluation.status : 'idle'}`}>{check.status === 'checking' ? 'Checking retailer feed…' : !ready ? 'Ready for a verified check' : evaluation.status === 'triggered' ? `Target met${evaluation.savings ? ` · Save $${evaluation.savings.toFixed(2)}` : ' · Back in stock'}` : evaluation.status === 'unavailable' ? unavailableMessage : 'Watching · Target not reached'}</p><div className="watch-actions"><button onClick={() => setEditing(product)}>Adjust target</button><button onClick={() => shopProduct(product.title)}>Search product</button>{current ? <a href={current.productUrl} target="_blank" rel="noreferrer">View deal ›</a> : <a href={product.productUrl} target="_blank" rel="noreferrer">Saved deal ›</a>}</div></div><button className="watch-menu" onClick={() => disableWatch(product)} aria-label={`Turn off price watch for ${product.title}`}>×</button></article>;
       })}</div>
     </>}
     {editing && <PriceWatchSheet
@@ -1185,7 +1185,7 @@ function PriceWatchSheet({ product, setting, onClose, onSave }: { product: Saved
 
   return <div className="filter-backdrop watch-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="watch-sheet" role="dialog" aria-modal="true" aria-labelledby="watch-settings-title"><div className="filter-sheet-head"><div><small>VERIFIED PRICE WATCH</small><h2 id="watch-settings-title">Set your target</h2></div><button onClick={onClose} aria-label="Close price-watch settings">×</button></div><h3>{product.title}</h3><p>Saved verified price <b>${product.price.toFixed(2)}</b></p><div className="watch-targets"><button className={mode === 'any' ? 'selected' : ''} onClick={() => setMode('any')}>Any drop<small>Below ${product.price.toFixed(2)}</small></button><button className={mode === 'five' ? 'selected' : ''} onClick={() => setMode('five')}>5% off<small>${fivePercent.toFixed(2)}</small></button><button className={mode === 'ten' ? 'selected' : ''} onClick={() => setMode('ten')}>10% off<small>${tenPercent.toFixed(2)}</small></button><button className={mode === 'custom' ? 'selected' : ''} onClick={() => setMode('custom')}>Custom<small>Your price</small></button></div>{mode === 'custom' && <label className="custom-target"><span>Notify me at or below</span><div>$ <input inputMode="decimal" value={custom} onChange={event => setCustom(event.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00"/></div>{!validCustom && <small>Enter a price below ${product.price.toFixed(2)}.</small>}</label>}<label className="stock-watch"><span><b>Back-in-stock alert</b><small>Notify when an official feed reports it available again.</small></span><input type="checkbox" checked={backInStock} onChange={event => setBackInStock(event.target.checked)}/><i/></label><button className="save-watch" disabled={!validCustom} onClick={submit}>Save watch settings</button><small className="watch-disclaimer">Alerts are evaluated only when DealRadar receives a matching official retailer price.</small></section></div>;
 }
-type ProfilePanel = 'name' | 'location' | 'radius' | 'fulfillment' | 'privacy' | null;
+type ProfilePanel = 'name' | 'location' | 'radius' | 'fulfillment' | 'connections' | 'privacy' | null;
 
 function Profile({ preferences, setPreferences, notify, restartOnboarding }: { preferences: ProfilePreferences; setPreferences: (preferences: ProfilePreferences) => void; notify: (message: string) => void; restartOnboarding: () => void }) {
   const [panel, setPanel] = useState<ProfilePanel>(null);
@@ -1198,6 +1198,7 @@ function Profile({ preferences, setPreferences, notify, restartOnboarding }: { p
     <div className="profile-title"><div><small>SHOPPING SETUP</small><h2>Profile</h2></div><span>Saved on device</span></div>
     <article className="profile-identity"><i>{profileInitials(preferences.name)}</i><span><small>DEALRADAR SHOPPER</small><h3>{preferences.name}</h3><button onClick={() => setPanel('name')}>Edit display name ›</button></span><b>✓</b></article>
     <div className="profile-home-card"><span>⌂</span><div><small>HOME SHOPPING AREA</small><b>{preferences.locationLabel}</b><em>{preferences.zipCode} · United States</em></div><button onClick={() => setPanel('location')}>Change</button></div>
+    <RetailerConnectionCard onOpen={() => setPanel('connections')}/>
     <div className="profile-section-head"><h3>Shopping preferences</h3><small>Used in Search and Map</small></div>
     <div className="profile-settings"><button onClick={() => setPanel('radius')}><i>⌾</i><span><b>Shopping radius</b><small>Default Search distance and Map quick filter</small></span><em>{preferences.searchRadius} mi ›</em></button><button onClick={() => setPanel('fulfillment')}><i>▣</i><span><b>Preferred fulfillment</b><small>Sets the starting Search filter</small></span><em>{fulfillmentLabel(preferences.fulfillment)} ›</em></button></div>
     <div className="profile-section-head"><h3>Notifications</h3><small>Device preferences</small></div>
@@ -1230,7 +1231,56 @@ function Profile({ preferences, setPreferences, notify, restartOnboarding }: { p
       onClose={() => setPanel(null)}
       onCleared={() => notify('Saved shopping data cleared from this device')}
     />}
+    {panel === 'connections' && <RetailerConnectionsSheet onClose={() => setPanel(null)}/>}
   </section>;
+}
+
+type RetailerStatusResponse = {
+  retailers: RetailerStatus[];
+  checkedAt: string | null;
+  summary: { verified: number; configured: number; actionRequired: number; locationOnly: number };
+};
+
+function RetailerConnectionCard({ onOpen }: { onOpen: () => void }) {
+  const [data, setData] = useState<RetailerStatusResponse | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/retailers', { signal: controller.signal }).then(async response => response.ok ? await response.json() as RetailerStatusResponse : null).then(result => { if (result) setData(result); }).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  const connected = (data?.summary.verified ?? 0) + (data?.summary.configured ?? 0);
+  return <button className="retailer-connection-card" onClick={onOpen}><i>{connected ? '✓' : '◎'}</i><span><small>RETAILER PRICE FEEDS</small><b>{connected ? `${connected} connector ${data?.summary.verified ? 'live verified' : 'configured'}` : 'Connection setup needed'}</b><em>{data ? `${data.summary.actionRequired} require action · ${data.summary.locationOnly} location only` : 'Checking connection status…'}</em></span><strong>View ›</strong></button>;
+}
+
+function retailerHealthCopy(status: RetailerStatus) {
+  if (status.health === 'verified') return { label: 'Live verified', className: 'verified' };
+  if (status.health === 'configured') return { label: 'Configured · check live', className: 'configured' };
+  if (status.health === 'failed') return { label: 'Live check failed', className: 'failed' };
+  if (status.health === 'location_only') return { label: 'Locations only', className: 'location-only' };
+  return { label: status.state === 'partner_access' ? 'Partner approval' : 'Credentials needed', className: 'action' };
+}
+
+function RetailerConnectionsSheet({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<RetailerStatusResponse | null>(null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'checking' | 'error'>('loading');
+  const load = async (probe = false) => {
+    setStatus(probe ? 'checking' : 'loading');
+    try {
+      const response = await fetch(`/api/retailers${probe ? '?probe=1' : ''}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Connection status unavailable');
+      setData(await response.json());
+      setStatus('ready');
+    } catch {
+      setStatus('error');
+    }
+  };
+  useEffect(() => { load(); }, []);
+  const configured = (data?.summary.verified ?? 0) + (data?.summary.configured ?? 0);
+
+  return <ProfileSheetFrame eyebrow="SERVER-SIDE STATUS" title="Retailer connections" onClose={onClose}><p className="profile-sheet-copy">A mapped store is not automatically a price-connected retailer. This screen shows exactly which official feeds are usable.</p>{data && <div className="connection-summary"><span><b>{data.summary.verified}</b><small>Live verified</small></span><span><b>{data.summary.configured}</b><small>Configured</small></span><span><b>{data.summary.locationOnly}</b><small>Location only</small></span></div>}{status === 'loading' && <div className="connections-loading"><i/>Loading retailer status…</div>}{status === 'error' && <div className="connections-error">Connection status could not be loaded.<button onClick={() => load()}>Try again</button></div>}{data && <div className="retailer-status-list">{data.retailers.map(retailer => {
+    const health = retailerHealthCopy(retailer);
+    return <article key={retailer.retailer}><div className="retailer-status-mark">{retailer.retailer === 'Best Buy' ? 'BEST' : retailer.retailer.slice(0, 2).toUpperCase()}</div><div><div className="retailer-status-title"><b>{retailer.retailer}</b><em className={health.className}>{health.label}</em></div><p>{retailer.message}</p><small>{retailer.requirement}</small>{retailer.checkedAt && <small>Checked {new Date(retailer.checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small>}{retailer.signupUrl && <a href={retailer.signupUrl} target="_blank" rel="noreferrer">Official access information ›</a>}</div></article>;
+  })}</div>}<button className="connection-check" disabled={!configured || status === 'checking'} onClick={() => load(true)}>{status === 'checking' ? 'Checking official feed…' : configured ? 'Run live connection check' : 'Add server credentials to test'}</button><small className="profile-sheet-note">Credentials stay on the server and are never sent to the browser. Live checks do not reveal secret values.</small></ProfileSheetFrame>;
 }
 
 function ProfileSheetFrame({ eyebrow, title, onClose, children }: { eyebrow: string; title: string; onClose: () => void; children: React.ReactNode }) {

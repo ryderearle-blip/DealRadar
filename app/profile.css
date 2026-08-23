@@ -20,6 +20,16 @@
 .profile-home-card b { overflow: hidden; margin-top: 2px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .profile-home-card em { margin-top: 2px; color: #c7d6e3; font-size: 8px; font-style: normal; }
 .profile-home-card button { border: 1px solid #ffffff26; border-radius: 12px; padding: 7px 9px; background: #ffffff0f; color: #fff; font-size: 8px; font-weight: 800; }
+.retailer-connection-card { width: 100%; display: grid; grid-template-columns: 38px minmax(0,1fr) auto; gap: 10px; align-items: center; margin-top: 10px; border: 1px solid #cfe1d6; border-radius: 18px; padding: 11px 12px; background: linear-gradient(135deg,#fbfffc,#f3faf6); text-align: left; }
+.retailer-connection-card > i { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: #e4f5ea; color: var(--green); font-size: 17px; font-style: normal; }
+.retailer-connection-card span { min-width: 0; }
+.retailer-connection-card small,
+.retailer-connection-card b,
+.retailer-connection-card em { display: block; }
+.retailer-connection-card small { color: var(--green); font-size: 7px; font-weight: 850; letter-spacing: .07em; }
+.retailer-connection-card b { margin-top: 2px; font-size: 10px; }
+.retailer-connection-card em { overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 8px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.retailer-connection-card > strong { color: var(--blue); font-size: 8px; }
 
 .profile-section-head { display: flex; align-items: flex-end; justify-content: space-between; margin: 20px 2px 8px; }
 .profile-section-head h3 { margin: 0; font-size: 15px; }
@@ -81,6 +91,29 @@
 .profile-data-counts span { display: grid; justify-items: center; border: 1px solid var(--line); border-radius: 14px; padding: 10px 5px; background: #f8fafb; }
 .profile-data-counts b { color: var(--blue); font-size: 18px; }
 .profile-data-counts small { color: var(--muted); font-size: 7px; text-align: center; }
+.connection-summary { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-bottom: 11px; }
+.connection-summary span { display: grid; justify-items: center; border: 1px solid var(--line); border-radius: 13px; padding: 9px 4px; background: #f8fafb; }
+.connection-summary b { color: var(--green); font-size: 17px; }
+.connection-summary small { color: var(--muted); font-size: 7px; text-align: center; }
+.connections-loading { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); border-radius: 15px; padding: 22px; color: var(--muted); font-size: 9px; }
+.connections-loading i { width: 16px; height: 16px; border: 2px solid #c9d3db; border-top-color: var(--green); border-radius: 50%; animation: map-spin .75s linear infinite; }
+.connections-error { display: grid; gap: 7px; border: 1px solid #efd0cc; border-radius: 14px; padding: 12px; background: #fff7f5; color: #8b4139; font-size: 9px; text-align: center; }
+.connections-error button { justify-self: center; border: 1px solid #c96b60; border-radius: 12px; padding: 6px 9px; background: #fff; color: #8b4139; font-size: 8px; }
+.retailer-status-list { display: grid; gap: 7px; }
+.retailer-status-list article { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 9px; border: 1px solid var(--line); border-radius: 15px; padding: 10px; background: #fff; }
+.retailer-status-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: #102036; color: #fff; font-size: 8px; font-weight: 950; }
+.retailer-status-title { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.retailer-status-title > b { font-size: 10px; }
+.retailer-status-title em { flex: none; border-radius: 8px; padding: 3px 5px; background: #eef1f4; color: #596676; font-size: 7px; font-style: normal; font-weight: 800; }
+.retailer-status-title em.verified { background: #dff5e7; color: var(--green); }
+.retailer-status-title em.configured { background: #e7f1ff; color: var(--blue); }
+.retailer-status-title em.failed { background: #fff0ed; color: #a0493e; }
+.retailer-status-title em.action { background: #fff4da; color: #8a6100; }
+.retailer-status-list p { margin: 4px 0 3px; color: #435064; font-size: 8px; line-height: 1.35; }
+.retailer-status-list article small { display: block; color: var(--muted); font-size: 7px; line-height: 1.35; }
+.retailer-status-list a { display: inline-block; margin-top: 5px; color: var(--blue); font-size: 7px; font-weight: 750; text-decoration: none; }
+.connection-check { width: 100%; min-height: 41px; margin-top: 11px; border: 0; border-radius: 16px; background: var(--green); color: #fff; font-size: 9px; font-weight: 850; }
+.connection-check:disabled { background: #aab5bd; }
 .profile-data-action { width: 100%; display: grid; grid-template-columns: 30px 1fr; gap: 9px; align-items: center; border: 1px solid var(--line); border-radius: 15px; margin-top: 8px; padding: 10px; background: #fff; color: var(--blue); text-align: left; }
 .profile-data-action span b,
 .profile-data-action span small { display: block; }
