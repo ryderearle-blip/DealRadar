@@ -251,6 +251,7 @@
 .live-prices-title span { color: var(--green); font-size: 9px; font-weight: 750; }
 .live-prices-title a { display: flex; align-items: center; }
 .live-prices-title img { width: auto; height: 18px; object-fit: contain; }
+.live-prices-title .official-feed-link { border-radius: 9px; padding: 4px 6px; background: #fff3b8; color: #473c00; font-size: 7px; font-weight: 850; text-decoration: none; }
 .live-prices article { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid #cbe7d6; border-radius: 14px; padding: 9px 11px; background: #fbfffc; }
 .live-prices article span { min-width: 0; }
 .live-prices article span b { display: block; overflow: hidden; color: var(--ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }

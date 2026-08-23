@@ -78,3 +78,16 @@ export function applyRetailerProbe(statuses: RetailerStatus[], retailer: string,
     checkedAt,
   } : status);
 }
+
+export function buildRetailerStatusPayload(retailers: RetailerStatus[], checkedAt: string | null) {
+  return {
+    retailers,
+    checkedAt,
+    summary: {
+      verified: retailers.filter(item => item.health === 'verified').length,
+      configured: retailers.filter(item => item.health === 'configured').length,
+      actionRequired: retailers.filter(item => item.health === 'action_required' || item.health === 'failed').length,
+      locationOnly: retailers.filter(item => item.health === 'location_only').length,
+    },
+  };
+}

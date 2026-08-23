@@ -121,15 +121,42 @@ const offers: Offer[] = [
 
 const HOME: [number, number] = defaultProfilePreferences.coordinates;
 const MAPLIBRE_VERSION = '5.24.0';
-let mapLibraryPromise: Promise<any> | null = null;
+type MapBounds = { contains: (coordinates: [number, number]) => boolean; getSouth: () => number; getWest: () => number; getNorth: () => number; getEast: () => number };
+type MapLibreMap = {
+  addControl: (control: unknown, position?: string) => void;
+  easeTo: (options: { center: [number, number]; zoom: number; duration: number }) => void;
+  getBounds: () => MapBounds;
+  getZoom: () => number;
+  on: (event: string, handler: () => void) => void;
+  once: (event: string, handler: () => void) => void;
+  remove: () => void;
+  resize: () => void;
+};
+type MapLibreMarker = { setLngLat: (coordinates: [number, number]) => MapLibreMarker; addTo: (map: MapLibreMap) => MapLibreMarker; remove: () => void };
+type MapLibreNamespace = {
+  Map: new (options: Record<string, unknown>) => MapLibreMap;
+  Marker: new (options: { element: HTMLElement; anchor: string }) => MapLibreMarker;
+  NavigationControl: new (options: Record<string, unknown>) => unknown;
+  AttributionControl: new (options: Record<string, unknown>) => unknown;
+  ScaleControl: new (options: Record<string, unknown>) => unknown;
+};
+type OverpassElement = {
+  id: number;
+  type: string;
+  lat?: number;
+  lon?: number;
+  center?: { lat?: number; lon?: number };
+  tags?: Record<string, string | undefined>;
+};
+let mapLibraryPromise: Promise<MapLibreNamespace> | null = null;
 
 function loadMapLibrary() {
   if (typeof window === 'undefined') return Promise.reject(new Error('Map requires a browser'));
-  const mapWindow = window as typeof window & { maplibregl?: any };
+  const mapWindow = window as typeof window & { maplibregl?: MapLibreNamespace };
   if (mapWindow.maplibregl) return Promise.resolve(mapWindow.maplibregl);
   if (mapLibraryPromise) return mapLibraryPromise;
 
-  mapLibraryPromise = new Promise((resolve, reject) => {
+  mapLibraryPromise = new Promise<MapLibreNamespace>((resolve, reject) => {
     if (!document.querySelector('link[data-dealradar-map]')) {
       const stylesheet = document.createElement('link');
       stylesheet.rel = 'stylesheet';
@@ -140,7 +167,7 @@ function loadMapLibrary() {
 
     const existing = document.querySelector<HTMLScriptElement>('script[data-dealradar-map]');
     if (existing) {
-      existing.addEventListener('load', () => resolve(mapWindow.maplibregl), { once: true });
+      existing.addEventListener('load', () => mapWindow.maplibregl ? resolve(mapWindow.maplibregl) : reject(new Error('Map library did not initialize')), { once: true });
       existing.addEventListener('error', () => reject(new Error('Map library failed to load')), { once: true });
       return;
     }
@@ -149,7 +176,7 @@ function loadMapLibrary() {
     script.src = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
     script.async = true;
     script.dataset.dealradarMap = 'true';
-    script.onload = () => resolve(mapWindow.maplibregl);
+    script.onload = () => mapWindow.maplibregl ? resolve(mapWindow.maplibregl) : reject(new Error('Map library did not initialize'));
     script.onerror = () => reject(new Error('Map library failed to load'));
     document.head.appendChild(script);
   });
@@ -262,13 +289,14 @@ export default function Home() {
   useEffect(() => {
     const products = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'));
     const stores = parseSavedStores(window.localStorage.getItem('dealradar-saved-stores'));
-    setNavCounts({
-      Search: 0,
-      Map: 0,
-      Saved: products.length + stores.length,
-      Alerts: products.filter(item => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true').length,
-      Profile: 0,
-    });
+    const timer = window.setTimeout(() => setNavCounts({
+        Search: 0,
+        Map: 0,
+        Saved: products.length + stores.length,
+        Alerts: products.filter(item => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true').length,
+        Profile: 0,
+      }), 0);
+    return () => window.clearTimeout(timer);
   }, [tab, toast]);
   const setPreferences = (next: ProfilePreferences) => {
     setPreferencesState(next);
@@ -366,11 +394,12 @@ function Search({ query, setQuery, open, openConnections, notify, preferences }:
   }, []);
 
   useEffect(() => {
-    setFilters(current => ({
-      ...current,
-      maxDistance: preferences.searchRadius,
-      fulfillment: preferences.fulfillment === 'both' ? 'all' : preferences.fulfillment,
-    }));
+    const timer = window.setTimeout(() => setFilters(current => ({
+        ...current,
+        maxDistance: preferences.searchRadius,
+        fulfillment: preferences.fulfillment === 'both' ? 'all' : preferences.fulfillment,
+      })), 0);
+    return () => window.clearTimeout(timer);
   }, [preferences.fulfillment, preferences.searchRadius]);
 
   useEffect(() => {
@@ -600,13 +629,13 @@ function SearchFilterSheet({ draft, setDraft, resetFilters, onClose, onApply }: 
     <div className="filter-actions"><button onClick={() => setDraft(resetFilters)}>Reset to Profile</button><button className="apply" onClick={onApply}>Show results</button></div>
   </section></div>;
 }
-function SearchBox({ value, setValue, placeholder }: any) { return <label className="searchbox"><b aria-hidden="true">⌕</b><input aria-label={placeholder || 'Search products'} value={value} onChange={e => setValue(e.target.value)} placeholder={placeholder}/></label> }
+function SearchBox({ value, setValue, placeholder }: { value: string; setValue: (value: string) => void; placeholder?: string }) { return <label className="searchbox"><b aria-hidden="true">⌕</b><input aria-label={placeholder || 'Search products'} value={value} onChange={event => setValue(event.target.value)} placeholder={placeholder}/></label> }
 type MapView = { radius: number; count: number };
 type MapFocusRequest = { id: string; coordinates: [number, number]; nonce: number } | null;
 
 function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetailers, onVisibleStores, active, focusRequest, home }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void; filters: MapStoreFilters; verifiedRetailers: string[]; onVisibleStores: (stores: Offer[]) => void; active: boolean; focusRequest: MapFocusRequest; home: [number, number] }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
   const selectedOfferRef = useRef(offer);
   const filtersRef = useRef(filters);
   const verifiedRetailersRef = useRef(verifiedRetailers);
@@ -640,9 +669,9 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
 
   useEffect(() => {
     let cancelled = false;
-    let map: any;
-    const markers: { marker: any; element: HTMLElement; offer?: Offer }[] = [];
-    let liveMarkers: { marker: any; element: HTMLElement; offer?: Offer }[] = [];
+    let map: MapLibreMap | null = null;
+    const markers: { marker: MapLibreMarker; element: HTMLElement; offer?: Offer }[] = [];
+    let liveMarkers: { marker: MapLibreMarker; element: HTMLElement; offer?: Offer }[] = [];
     let searchController: AbortController | null = null;
     let refreshTimer = 0;
     const storeCache = new globalThis.Map<string, Offer[]>();
@@ -650,7 +679,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
     loadMapLibrary().then((maplibregl) => {
       if (cancelled || !containerRef.current) return;
 
-      map = new maplibregl.Map({
+      const activeMap = new maplibregl.Map({
         container: containerRef.current,
         style: 'https://tiles.openfreemap.org/styles/liberty',
         center: home,
@@ -661,16 +690,17 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
         renderWorldCopies: false,
         attributionControl: false,
       });
-      mapRef.current = map;
-      map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), 'top-right');
-      map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
-      map.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: 'imperial' }), 'bottom-left');
+      map = activeMap;
+      mapRef.current = activeMap;
+      activeMap.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), 'top-right');
+      activeMap.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+      activeMap.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: 'imperial' }), 'bottom-left');
 
       const homeMarker = document.createElement('div');
       homeMarker.className = 'map-home-marker';
       homeMarker.setAttribute('aria-label', 'Saved home area');
       homeMarker.innerHTML = '<span>⌂</span>';
-      markers.push({ marker: new maplibregl.Marker({ element: homeMarker, anchor: 'center' }).setLngLat(home).addTo(map), element: homeMarker });
+      markers.push({ marker: new maplibregl.Marker({ element: homeMarker, anchor: 'center' }).setLngLat(home).addTo(activeMap), element: homeMarker });
 
       const createOfferMarker = (item: Offer, live = false) => {
         const marker = document.createElement('button');
@@ -687,7 +717,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
         marker.appendChild(brand);
         marker.appendChild(price);
         marker.addEventListener('click', () => setOffer(item));
-        return { marker: new maplibregl.Marker({ element: marker, anchor: 'bottom' }).setLngLat(item.coordinates!).addTo(map), element: marker, offer: item };
+        return { marker: new maplibregl.Marker({ element: marker, anchor: 'bottom' }).setLngLat(item.coordinates!).addTo(activeMap), element: marker, offer: item };
       };
 
       offers.filter(item => item.coordinates).forEach((item) => {
@@ -695,7 +725,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       });
 
       const getRadius = () => {
-        const zoom = map.getZoom();
+        const zoom = activeMap.getZoom();
         return zoom >= 10.2 ? 20
           : zoom >= 9.2 ? 30
             : zoom >= 8.2 ? 45
@@ -706,7 +736,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       };
 
       const updateVisibleStores = () => {
-        const bounds = map.getBounds();
+        const bounds = activeMap.getBounds();
         const visibleCandidates = [...markers, ...liveMarkers].flatMap(entry => entry.offer?.coordinates && bounds.contains(entry.offer.coordinates) ? [entry.offer] : []);
         const filteredOffers = filterMappedStores(
           visibleCandidates,
@@ -756,7 +786,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
 
       const refreshRealStores = async () => {
         if (cancelled) return;
-        const zoom = map.getZoom();
+        const zoom = activeMap.getZoom();
         searchController?.abort();
 
         if (zoom < 9) {
@@ -770,7 +800,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
 
         setNeedsZoom(false);
         setRefreshing(true);
-        const bounds = map.getBounds();
+        const bounds = activeMap.getBounds();
         const south = Math.max(18, bounds.getSouth());
         const west = Math.max(-171, bounds.getWest());
         const north = Math.min(72, bounds.getNorth());
@@ -787,14 +817,16 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
               headers: { Accept: 'application/json' },
             });
             if (!response.ok) throw new Error('Store search unavailable');
-            const data = await response.json() as { elements?: any[] };
-            realStores = (data.elements ?? []).flatMap((element: any) => {
+            const data = await response.json() as { elements?: OverpassElement[] };
+            realStores = (data.elements ?? []).flatMap((element) => {
               const tags = element.tags ?? {};
               const name = tags.name || tags.brand;
               const lat = element.lat ?? element.center?.lat;
               const lng = element.lon ?? element.center?.lon;
               if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return [];
-              const duplicate = offers.some(item => item.coordinates && item.store.toLowerCase().includes(String(name).toLowerCase()) && Math.abs(item.coordinates[0] - lng) < .01 && Math.abs(item.coordinates[1] - lat) < .01);
+              const latitude = Number(lat);
+              const longitude = Number(lng);
+              const duplicate = offers.some(item => item.coordinates && item.store.toLowerCase().includes(String(name).toLowerCase()) && Math.abs(item.coordinates[0] - longitude) < .01 && Math.abs(item.coordinates[1] - latitude) < .01);
               if (duplicate) return [];
               const visual = storeVisual(String(name));
               const streetAddress = [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' ');
@@ -808,7 +840,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
                 mark: visual.mark,
                 detail: 'Price feed not connected',
                 address: [streetAddress, locality].filter(Boolean).join(' · ') || 'Mapped business location',
-                coordinates: [Number(lng), Number(lat)] as [number, number],
+                coordinates: [longitude, latitude] as [number, number],
               } satisfies Offer];
             });
             storeCache.set(cacheKey, realStores);
@@ -833,10 +865,10 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
         refreshTimer = window.setTimeout(refreshRealStores, 320);
       };
 
-      map.on('movestart', () => setRefreshing(true));
-      map.on('moveend', scheduleRefresh);
+      activeMap.on('movestart', () => setRefreshing(true));
+      activeMap.on('moveend', scheduleRefresh);
 
-      map.once('load', () => {
+      activeMap.once('load', () => {
         if (!cancelled) {
           setStatus('ready');
           refreshRealStores();
@@ -909,7 +941,8 @@ function Map({ query, setQuery, offer, setOffer, notify, preferences }: { query:
   }, []);
 
   useEffect(() => {
-    setMapFilters(current => ({ ...current, withinMiles: current.withinMiles === null ? null : preferences.searchRadius }));
+    const timer = window.setTimeout(() => setMapFilters(current => ({ ...current, withinMiles: current.withinMiles === null ? null : preferences.searchRadius })), 0);
+    return () => window.clearTimeout(timer);
   }, [preferences.searchRadius]);
 
   const chooseStore = (store: Offer) => {
@@ -983,7 +1016,7 @@ function LivePriceResults({ query, search, storeName }: { query: string; search:
   if (search.status === 'error') return <div className="price-feed-state error"><b>Price search is unavailable</b><span>Please try again in a moment.</span></div>;
 
   if (search.offers.length) {
-    return <section className="live-prices" aria-label="Verified live prices"><div className="live-prices-title"><b>Verified catalog prices</b><a href="https://developer.bestbuy.com/" target="_blank" rel="noreferrer" aria-label="Powered by the Best Buy Developer API">{/* eslint-disable-next-line @next/next/no-img-element */}<img src="https://developer.bestbuy.com/images/bestbuy-logo.png" alt="Best Buy Developer API"/></a></div>{search.offers.slice(0, 2).map(item => <article key={item.id}><span><b>{item.title}</b><small>{item.retailer} · {item.matchType === 'exact' ? 'Exact match' : item.matchType === 'similar' ? 'Similar model' : 'Possible match'}</small></span><strong>${item.price.toFixed(2)}<a href={item.productUrl} target="_blank" rel="noreferrer">View ›</a></strong></article>)}{storeName && <p className="inventory-caveat">Catalog price shown. Confirm inventory for {storeName} before traveling.</p>}</section>;
+    return <section className="live-prices" aria-label="Verified live prices"><div className="live-prices-title"><b>Verified catalog prices</b><a className="official-feed-link" href="https://developer.bestbuy.com/" target="_blank" rel="noreferrer" aria-label="Powered by the Best Buy Developer API">Official API ↗</a></div>{search.offers.slice(0, 2).map(item => <article key={item.id}><span><b>{item.title}</b><small>{item.retailer} · {item.matchType === 'exact' ? 'Exact match' : item.matchType === 'similar' ? 'Similar model' : 'Possible match'}</small></span><strong>${item.price.toFixed(2)}<a href={item.productUrl} target="_blank" rel="noreferrer">View ›</a></strong></article>)}{storeName && <p className="inventory-caveat">Catalog price shown. Confirm inventory for {storeName} before traveling.</p>}</section>;
   }
 
   const connected = search.retailers.filter(item => item.state === 'connected').length;
@@ -999,21 +1032,24 @@ function Saved({ query, setQuery, notify, shopProduct, browseStores, openStore }
   const [alertIds, setAlertIds] = useState<string[]>([]);
 
   useEffect(() => {
-    const knownStores: SavedStoreRecord[] = offers.map(store => ({
-      id: store.id ?? store.store,
-      store: store.store,
-      address: store.address,
-      distance: store.distance,
-      detail: store.detail,
-      color: store.color,
-      mark: store.mark,
-      coordinates: store.coordinates,
-      savedAt: new Date(0).toISOString(),
-    }));
-    const products = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'));
-    setSavedProducts(products);
-    setSavedStores(parseSavedStores(window.localStorage.getItem('dealradar-saved-stores'), knownStores));
-    setAlertIds(products.filter(item => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true').map(item => item.id));
+    const timer = window.setTimeout(() => {
+      const knownStores: SavedStoreRecord[] = offers.map(store => ({
+        id: store.id ?? store.store,
+        store: store.store,
+        address: store.address,
+        distance: store.distance,
+        detail: store.detail,
+        color: store.color,
+        mark: store.mark,
+        coordinates: store.coordinates,
+        savedAt: new Date(0).toISOString(),
+      }));
+      const products = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'));
+      setSavedProducts(products);
+      setSavedStores(parseSavedStores(window.localStorage.getItem('dealradar-saved-stores'), knownStores));
+      setAlertIds(products.filter(item => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true').map(item => item.id));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const visibleProducts = useMemo(() => filterSavedProducts(savedProducts, query, sort), [query, savedProducts, sort]);
@@ -1274,7 +1310,10 @@ function RetailerConnectionsSheet({ onClose }: { onClose: () => void }) {
       setStatus('error');
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const configured = (data?.summary.verified ?? 0) + (data?.summary.configured ?? 0);
 
   return <ProfileSheetFrame eyebrow="SERVER-SIDE STATUS" title="Retailer connections" onClose={onClose}><p className="profile-sheet-copy">A mapped store is not automatically a price-connected retailer. This screen shows exactly which official feeds are usable.</p>{data && <div className="connection-summary"><span><b>{data.summary.verified}</b><small>Live verified</small></span><span><b>{data.summary.configured}</b><small>Configured</small></span><span><b>{data.summary.locationOnly}</b><small>Location only</small></span></div>}{status === 'loading' && <div className="connections-loading"><i/>Loading retailer status…</div>}{status === 'error' && <div className="connections-error">Connection status could not be loaded.<button onClick={() => load()}>Try again</button></div>}{data && <div className="retailer-status-list">{data.retailers.map(retailer => {

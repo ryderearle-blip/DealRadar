@@ -1,5 +1,7 @@
 # DealRadar
 
+[![DealRadar CI](https://github.com/ryderearle-blip/DealRadar/actions/workflows/ci.yml/badge.svg)](https://github.com/ryderearle-blip/DealRadar/actions/workflows/ci.yml)
+
 DealRadar compares verified retailer prices with real U.S. store locations. The app never creates an estimated retailer price when a live feed is unavailable.
 
 ## Retailer connections
@@ -67,3 +69,7 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Installable mobile-app manifest, iPhone safe-area support, and standalone display metadata
 
 See [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) for the remaining production requirements and current prototype limits.
+
+## Verification
+
+Every push and pull request runs the same staging gate: unit and contract tests, server-secret boundary checks, TypeScript, lint, a production build, and final artifact inspection. Run `pnpm verify` locally before staging.

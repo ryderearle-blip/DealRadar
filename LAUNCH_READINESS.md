@@ -36,7 +36,8 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 - [ ] Complete security review, secret rotation plan, rate limits, abuse protection, and dependency audit
 - [ ] Add error monitoring, availability checks, analytics consent, and retailer-feed health alerts
 - [ ] Complete accessibility, iPhone Safari, Android Chrome, desktop, and slow-network testing
-- [ ] Add unit, API-contract, integration, and end-to-end tests to continuous integration
+- [x] Run unit, API-contract, secret-safety, type, lint, build, and artifact checks in GitHub CI
+- [ ] Add browser-level integration and end-to-end tests after the staging environment is available
 
 ## Deployment
 

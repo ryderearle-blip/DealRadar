@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyRetailerProbe, buildRetailerStatuses } from '../app/retailer-connections.ts';
+import { applyRetailerProbe, buildRetailerStatuses, buildRetailerStatusPayload } from '../app/retailer-connections.ts';
 
 test('retailer status distinguishes connectors, partner access, and mapped locations', () => {
   const statuses = buildRetailerStatuses(false);
@@ -24,4 +24,12 @@ test('a configured connector becomes live only after a successful probe', () => 
   const failed = applyRetailerProbe(configured, 'Best Buy', false, '2026-08-23T12:00:00.000Z');
   assert.equal(failed[0].health, 'failed');
   assert.equal(failed[0].state, 'needs_credentials');
+});
+
+test('retailer status API payload exposes health counts but no credentials', () => {
+  const payload = buildRetailerStatusPayload(buildRetailerStatuses(true), null);
+  assert.deepEqual(payload.summary, { verified: 0, configured: 1, actionRequired: 2, locationOnly: 3 });
+  const serialized = JSON.stringify(payload);
+  assert.doesNotMatch(serialized, /api[_-]?key|client[_-]?secret|credential[_-]?secret/i);
+  assert.equal(payload.retailers.every(item => !item.signupUrl || item.signupUrl.startsWith('https://')), true);
 });

@@ -1,4 +1,4 @@
-import { applyRetailerProbe, buildRetailerStatuses } from '../../retailer-connections';
+import { applyRetailerProbe, buildRetailerStatuses, buildRetailerStatusPayload } from '../../retailer-connections';
 
 async function probeBestBuy(apiKey: string) {
   const controller = new AbortController();
@@ -24,14 +24,8 @@ export async function GET(request: Request) {
     const checkedAt = new Date().toISOString();
     retailers = applyRetailerProbe(retailers, 'Best Buy', await probeBestBuy(apiKey), checkedAt);
   }
-  return Response.json({
-    retailers,
-    checkedAt: probe ? new Date().toISOString() : null,
-    summary: {
-      verified: retailers.filter(item => item.health === 'verified').length,
-      configured: retailers.filter(item => item.health === 'configured').length,
-      actionRequired: retailers.filter(item => item.health === 'action_required' || item.health === 'failed').length,
-      locationOnly: retailers.filter(item => item.health === 'location_only').length,
-    },
-  }, { headers: { 'Cache-Control': probe ? 'no-store' : 'private, max-age=60' } });
+  return Response.json(
+    buildRetailerStatusPayload(retailers, probe ? new Date().toISOString() : null),
+    { headers: { 'Cache-Control': probe ? 'no-store' : 'private, max-age=60' } },
+  );
 }
