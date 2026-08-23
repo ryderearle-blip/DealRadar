@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, normalizeBarcode, toggleComparison, updatePriceHistory } from './search-logic';
+import { filterMappedStores, retailerMatchesStore, type MapStoreFilters } from './map-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -458,11 +459,16 @@ function SearchFilterSheet({ draft, setDraft, onClose, onApply }: { draft: Searc
 }
 function SearchBox({ value, setValue, placeholder }: any) { return <label className="searchbox"><b aria-hidden="true">⌕</b><input aria-label={placeholder || 'Search products'} value={value} onChange={e => setValue(e.target.value)} placeholder={placeholder}/></label> }
 type MapView = { radius: number; count: number };
+type MapFocusRequest = { id: string; coordinates: [number, number]; nonce: number } | null;
 
-function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void }) {
+function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetailers, onVisibleStores, active, focusRequest }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void; filters: MapStoreFilters; verifiedRetailers: string[]; onVisibleStores: (stores: Offer[]) => void; active: boolean; focusRequest: MapFocusRequest }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const selectedOfferRef = useRef(offer);
+  const filtersRef = useRef(filters);
+  const verifiedRetailersRef = useRef(verifiedRetailers);
+  const visibleStoresCallbackRef = useRef(onVisibleStores);
+  const visibilityUpdaterRef = useRef<() => void>(() => undefined);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [needsZoom, setNeedsZoom] = useState(false);
@@ -470,6 +476,24 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
   useEffect(() => {
     selectedOfferRef.current = offer;
   }, [offer]);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+    verifiedRetailersRef.current = verifiedRetailers;
+    visibleStoresCallbackRef.current = onVisibleStores;
+    visibilityUpdaterRef.current();
+  }, [filters, onVisibleStores, verifiedRetailers]);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setTimeout(() => mapRef.current?.resize(), 0);
+    return () => window.clearTimeout(timer);
+  }, [active]);
+
+  useEffect(() => {
+    if (!focusRequest || !mapRef.current) return;
+    mapRef.current.easeTo({ center: focusRequest.coordinates, zoom: Math.max(mapRef.current.getZoom(), 12), duration: 650 });
+  }, [focusRequest]);
 
   useEffect(() => {
     let cancelled = false;
@@ -540,35 +564,41 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
 
       const updateVisibleStores = () => {
         const bounds = map.getBounds();
-        const visibleStores = markers.filter(entry => entry.offer?.coordinates && bounds.contains(entry.offer.coordinates));
-        const visibleLiveStores = liveMarkers.filter(entry => entry.offer?.coordinates && bounds.contains(entry.offer.coordinates));
+        const visibleCandidates = [...markers, ...liveMarkers].flatMap(entry => entry.offer?.coordinates && bounds.contains(entry.offer.coordinates) ? [entry.offer] : []);
+        const filteredOffers = filterMappedStores(
+          visibleCandidates,
+          filtersRef.current,
+          verifiedRetailersRef.current,
+          item => item.coordinates ? milesBetween(HOME, item.coordinates) : null,
+        );
+        const visibleIds = new Set(filteredOffers.map(item => item.id ?? item.store));
         markers.forEach(entry => {
           if (!entry.offer) return;
-          const hidden = !entry.offer.coordinates || !bounds.contains(entry.offer.coordinates);
+          const hidden = !entry.offer.coordinates || !bounds.contains(entry.offer.coordinates) || !visibleIds.has(entry.offer.id ?? entry.offer.store);
           entry.element.classList.toggle('marker-hidden', hidden);
           entry.element.hidden = hidden;
           entry.element.setAttribute('aria-hidden', String(hidden));
         });
         liveMarkers.forEach(entry => {
           if (!entry.offer) return;
-          const hidden = !entry.offer.coordinates || !bounds.contains(entry.offer.coordinates);
+          const hidden = !entry.offer.coordinates || !bounds.contains(entry.offer.coordinates) || !visibleIds.has(entry.offer.id ?? entry.offer.store);
           entry.element.hidden = hidden;
           entry.element.setAttribute('aria-hidden', String(hidden));
         });
 
-        const allVisibleStores = [...visibleStores, ...visibleLiveStores];
-        const visibleOffers = allVisibleStores.flatMap(entry => entry.offer ? [entry.offer] : []);
         const selectedId = selectedOfferRef.current.id ?? selectedOfferRef.current.store;
-        if (visibleOffers.length && !visibleOffers.some(item => (item.id ?? item.store) === selectedId)) {
-          const pricedOffers = visibleOffers.filter(item => item.price !== null);
+        if (filteredOffers.length && !filteredOffers.some(item => (item.id ?? item.store) === selectedId)) {
+          const pricedOffers = filteredOffers.filter(item => item.price !== null);
           const bestVisibleOffer = pricedOffers.length
             ? pricedOffers.reduce((best, item) => Number(item.price) < Number(best.price) ? item : best)
-            : visibleOffers[0];
+            : filteredOffers[0];
           selectedOfferRef.current = bestVisibleOffer;
           setOffer(bestVisibleOffer);
         }
-        setView({ radius: getRadius(), count: allVisibleStores.length });
+        visibleStoresCallbackRef.current(filteredOffers);
+        setView({ radius: getRadius(), count: filteredOffers.length });
       };
+      visibilityUpdaterRef.current = updateVisibleStores;
 
       const storeVisual = (name: string) => {
         const normalized = name.toLowerCase();
@@ -681,6 +711,7 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
       liveMarkers.forEach(entry => entry.marker.remove());
       map?.remove();
       mapRef.current = null;
+      visibilityUpdaterRef.current = () => undefined;
     };
   }, [setOffer, setView]);
 
@@ -705,31 +736,90 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
 function Map({ query, setQuery, offer, setOffer, notify }: any) {
   const [view, setView] = useState<MapView>({ radius: 20, count: 3 });
   const prices = useVerifiedPriceSearch(String(query));
+  const [display, setDisplay] = useState<'map' | 'list'>('map');
+  const [mapFilters, setMapFilters] = useState<MapStoreFilters>({ verifiedOnly: false, withinMiles: null });
+  const [visibleStores, setVisibleStores] = useState<Offer[]>([]);
+  const [focusRequest, setFocusRequest] = useState<MapFocusRequest>(null);
+  const [savedStores, setSavedStores] = useState<string[]>([]);
+  const verifiedRetailers = useMemo(() => [...new Set(prices.offers.map(item => item.retailer))], [prices.offers]);
+  const selectedSearch = useMemo(() => ({ ...prices, offers: prices.offers.filter(item => retailerMatchesStore(item.retailer, offer.store)) }), [offer.store, prices]);
+  const receiveVisibleStores = useCallback((stores: Offer[]) => setVisibleStores(stores), []);
+  const selectedStoreId = offer.id ?? offer.store;
+  const selectedSaved = savedStores.includes(selectedStoreId);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try { setSavedStores(JSON.parse(window.localStorage.getItem('dealradar-saved-stores') ?? '[]')); }
+      catch { setSavedStores([]); }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const chooseStore = (store: Offer) => {
+    setOffer(store);
+    if (store.coordinates) setFocusRequest({ id: store.id ?? store.store, coordinates: store.coordinates, nonce: Date.now() });
+    setDisplay('map');
+  };
+  const toggleSavedStore = () => {
+    setSavedStores(current => {
+      const next = current.includes(selectedStoreId) ? current.filter(id => id !== selectedStoreId) : [...current, selectedStoreId];
+      window.localStorage.setItem('dealradar-saved-stores', JSON.stringify(next));
+      return next;
+    });
+    notify(selectedSaved ? `${offer.store} removed from Saved` : `${offer.store} saved`);
+  };
 
   return <section className="page map-page">
-    <div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Verified prices</button><button>▣ Pickup today</button><button>⌖ ~{view.radius} mi view</button></div></div>
-    <InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView}/>
+    <div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="map-control-row"><div className="chips"><button className={mapFilters.verifiedOnly ? 'on' : ''} onClick={() => setMapFilters(current => ({ ...current, verifiedOnly: !current.verifiedOnly }))}>✓ Price connected</button><button className={mapFilters.withinMiles === 25 ? 'on' : ''} onClick={() => setMapFilters(current => ({ ...current, withinMiles: current.withinMiles === 25 ? null : 25 }))}>⌖ Within 25 mi</button><button disabled>~{view.radius} mi view</button></div><div className="map-list-toggle" role="group" aria-label="Show map or store list"><button className={display === 'map' ? 'active' : ''} onClick={() => setDisplay('map')}>Map</button><button className={display === 'list' ? 'active' : ''} onClick={() => setDisplay('list')}>List {visibleStores.length}</button></div></div></div>
+    <div className={display === 'map' ? 'map-display active' : 'map-display'}><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView} filters={mapFilters} verifiedRetailers={verifiedRetailers} onVisibleStores={receiveVisibleStores} active={display === 'map'} focusRequest={focusRequest}/></div>
+    {display === 'list' && <MapStoreList
+      stores={visibleStores}
+      selected={offer}
+      verifiedRetailers={verifiedRetailers}
+      filters={mapFilters}
+      onSelect={chooseStore}
+      onClearFilters={() => setMapFilters({ verifiedOnly: false, withinMiles: null })}
+    />}
     <article className="sheet"><i/>
-      <div className="sheet-head"><div><small>{view.count} real stores in this map area</small><h2>Deals in this area</h2></div><button aria-label="Save selected deal">♡</button></div>
-      {view.count > 0 ? <div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>Mapped location</em></span><strong className="no-price">Price unavailable<button onClick={() => notify(`Opening ${offer.store}`)}>Store details ›</button></strong></div> : <div className="area-empty"><b>No mapped stores at this view</b><span>Zoom in or move the map to search another U.S. area.</span></div>}
-      <LivePriceResults query={query} search={prices}/>
+      <div className="sheet-head"><div><small>{view.count} matching stores in this map area</small><h2>{display === 'list' ? 'Selected store' : 'Deals near this store'}</h2></div><button className={selectedSaved ? 'saved' : ''} onClick={toggleSavedStore} aria-label={`${selectedSaved ? 'Remove' : 'Save'} selected store`}>{selectedSaved ? '♥' : '♡'}</button></div>
+      {view.count > 0 ? <div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{verifiedRetailers.some(retailer => retailerMatchesStore(retailer, offer.store)) ? 'Price feed connected' : 'Mapped location'}</em></span><strong className="no-price">{selectedSearch.offers.length ? 'Catalog price below' : 'Price unavailable'}{offer.coordinates ? <a className="store-directions" href={`https://www.google.com/maps/dir/?api=1&destination=${offer.coordinates[1]},${offer.coordinates[0]}`} target="_blank" rel="noreferrer">Directions ›</a> : null}</strong></div> : <div className="area-empty"><b>No stores match these controls</b><span>Turn off a filter, zoom in, or move the map to another U.S. area.</span></div>}
+      {view.count > 0 && <LivePriceResults
+        query={query}
+        search={selectedSearch}
+        storeName={offer.store}
+      />}
       <div className="deal-note"><span>✓</span><p><b>Verified prices only</b><small>Unconnected retailers never receive an estimated price</small></p></div>
     </article>
   </section>;
 }
 
-function LivePriceResults({ query, search }: { query: string; search: PriceSearch }) {
+function MapStoreList({ stores, selected, verifiedRetailers, filters, onSelect, onClearFilters }: { stores: Offer[]; selected: Offer; verifiedRetailers: string[]; filters: MapStoreFilters; onSelect: (store: Offer) => void; onClearFilters: () => void }) {
+  const sorted = useMemo(() => [...stores].sort((first, second) => {
+    const firstDistance = first.coordinates ? milesBetween(HOME, first.coordinates) : Infinity;
+    const secondDistance = second.coordinates ? milesBetween(HOME, second.coordinates) : Infinity;
+    return firstDistance - secondDistance;
+  }), [stores]);
+
+  return <section className="map-store-list" aria-label="Stores visible on the map"><div className="map-store-list-head"><div><small>VISIBLE MAP AREA</small><h2>{stores.length} stores</h2></div><span>Nearest first</span></div>{sorted.length ? <div className="map-store-rows">{sorted.map(store => {
+    const distance = store.coordinates ? milesBetween(HOME, store.coordinates) : null;
+    const connected = verifiedRetailers.some(retailer => retailerMatchesStore(retailer, store.store));
+    const active = (selected.id ?? selected.store) === (store.id ?? store.store);
+    return <button key={store.id ?? store.store} className={active ? 'active' : ''} onClick={() => onSelect(store)}><b className="store-list-logo" style={{ background: store.color }}>{store.mark}</b><span><strong>{store.store}</strong><small>{distance === null ? store.distance : `${distance.toFixed(1)} mi`} · {store.address}</small><em className={connected ? 'connected' : ''}>{connected ? '✓ Price connected' : 'Mapped store'}</em></span><i>›</i></button>;
+  })}</div> : <div className="map-list-empty"><b>No stores match</b><span>{filters.verifiedOnly ? 'No connected retailer price feeds are visible in this area yet.' : 'Move the map or broaden the distance filter.'}</span><button onClick={onClearFilters}>Clear map filters</button></div>}</section>;
+}
+
+function LivePriceResults({ query, search, storeName }: { query: string; search: PriceSearch; storeName?: string }) {
   if (search.status === 'idle') return <div className="price-feed-state"><b>Search for a product</b><span>DealRadar will check connected official retailer feeds.</span></div>;
   if (search.status === 'loading') return <div className="price-feed-state loading"><b>Checking official price feeds…</b><span>Looking for “{query}”</span></div>;
   if (search.status === 'error') return <div className="price-feed-state error"><b>Price search is unavailable</b><span>Please try again in a moment.</span></div>;
 
   if (search.offers.length) {
-    return <section className="live-prices" aria-label="Verified live prices"><div className="live-prices-title"><b>Verified live prices</b><a href="https://developer.bestbuy.com/" target="_blank" rel="noreferrer" aria-label="Powered by the Best Buy Developer API">{/* eslint-disable-next-line @next/next/no-img-element */}<img src="https://developer.bestbuy.com/images/bestbuy-logo.png" alt="Best Buy Developer API"/></a></div>{search.offers.slice(0, 2).map(item => <article key={item.id}><span><b>{item.title}</b><small>{item.retailer} · {item.availability}</small></span><strong>${item.price.toFixed(2)}<a href={item.productUrl} target="_blank" rel="noreferrer">View ›</a></strong></article>)}</section>;
+    return <section className="live-prices" aria-label="Verified live prices"><div className="live-prices-title"><b>Verified catalog prices</b><a href="https://developer.bestbuy.com/" target="_blank" rel="noreferrer" aria-label="Powered by the Best Buy Developer API">{/* eslint-disable-next-line @next/next/no-img-element */}<img src="https://developer.bestbuy.com/images/bestbuy-logo.png" alt="Best Buy Developer API"/></a></div>{search.offers.slice(0, 2).map(item => <article key={item.id}><span><b>{item.title}</b><small>{item.retailer} · {item.matchType === 'exact' ? 'Exact match' : item.matchType === 'similar' ? 'Similar model' : 'Possible match'}</small></span><strong>${item.price.toFixed(2)}<a href={item.productUrl} target="_blank" rel="noreferrer">View ›</a></strong></article>)}{storeName && <p className="inventory-caveat">Catalog price shown. Confirm inventory for {storeName} before traveling.</p>}</section>;
   }
 
   const connected = search.retailers.filter(item => item.state === 'connected').length;
   const ready = search.retailers.find(item => item.state === 'needs_credentials');
-  return <div className="price-feed-state"><b>{connected ? 'No matching live prices' : 'Retailer access needed'}</b><span>{connected ? `No connected feed matched “${query}”.` : `${ready?.retailer ?? 'Retailer'} integration is built and waiting for approved credentials.`}</span><small>{search.retailers.filter(item => item.state === 'partner_access').map(item => item.retailer).join(' and ')} require partner approval.</small></div>;
+  return <div className="price-feed-state"><b>{connected ? `No verified ${storeName ? `${storeName} ` : ''}price` : 'Retailer access needed'}</b><span>{connected ? `No connected feed matched “${query}” for this store.` : `${ready?.retailer ?? 'Retailer'} integration is built and waiting for approved credentials.`}</span><small>{search.retailers.filter(item => item.state === 'partner_access').map(item => item.retailer).join(' and ')} require partner approval.</small></div>;
 }
 
 function Saved({ query, setQuery, products, notify }: any) { return <section className="page"><h2>Saved</h2><SearchBox value={query} setValue={setQuery} placeholder="Search saved items"/><div className="segments"><button className="on">Products</button><button>Stores</button></div><div className="summary"><b>♧</b><span><strong>3 price watches</strong><small>Alerts begin when a verified feed is connected.</small></span></div><div className="saved-list">{products.map((p:any) => <article key={p[0]}><i>{p[3]}</i><span><h3>{p[0]}</h3><small>Verified price</small><strong>{p[1]}</strong>{p[2] && <em>{p[2]}</em>}<button onClick={() => notify(`Viewing ${p[0]}`)}>Check feeds ›</button></span><b>♥</b></article>)}</div>{!products.length && <p className="empty">No saved items found.</p>}</section> }

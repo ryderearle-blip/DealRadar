@@ -6,6 +6,16 @@
   background: #e9eef1;
 }
 
+.map-display { display: none; min-height: 0; flex: 1; }
+.map-display.active { display: flex; }
+.map-display > .map-shell { width: 100%; min-height: 286px; }
+.map-control-row { display: flex; align-items: center; gap: 8px; }
+.map-control-row .chips { min-width: 0; flex: 1; }
+.map-control-row .chips button:disabled { cursor: default; opacity: .72; }
+.map-list-toggle { flex: none; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 16px; padding: 2px; background: #f2f4f6; }
+.map-list-toggle button { min-height: 29px; border: 0; border-radius: 13px; padding: 0 10px; background: transparent; color: #657386; font-size: 9px; font-weight: 750; }
+.map-list-toggle button.active { background: #fff; color: var(--green); box-shadow: 0 2px 8px #10203612; }
+
 .map-shell > .map {
   position: absolute;
   inset: 0;
@@ -184,12 +194,34 @@
 .maplibregl-ctrl-scale { border-color: #445364 !important; background: #ffffffbf !important; color: #2c3948 !important; font-size: 9px !important; }
 .maplibregl-ctrl-attrib { font-size: 9px !important; }
 .sheet-head > div > small { display: block; margin-bottom: 2px; color: var(--green); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.sheet-head > button.saved { color: #e2233c; }
 .deal .address { margin-top: 2px; color: #7a8795; font-size: 10px; }
+.store-directions { display: block; border: 0; border-radius: 14px; margin-top: 7px; padding: 7px 10px; background: var(--green); color: #fff; font-size: 10px; text-decoration: none; }
 
 .deal-note { display: flex; align-items: center; gap: 9px; margin-top: 9px; padding: 0 5px; }
 .deal-note > span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #e7f7ed; color: var(--green); font-size: 12px; font-weight: 900; }
 .deal-note p { margin: 0; font-size: 11px; }
 .deal-note small { display: block; color: var(--muted); font-size: 9px; }
+.inventory-caveat { margin: 0; padding: 0 3px; color: var(--muted); font-size: 8px; line-height: 1.4; }
+
+.map-store-list { flex: 1; min-height: 286px; overflow-y: auto; padding: 13px 17px 20px; background: #f4f7f8; }
+.map-store-list-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 10px; }
+.map-store-list-head small { color: var(--green); font-size: 8px; font-weight: 850; letter-spacing: .07em; }
+.map-store-list-head h2 { margin: 1px 0 0; font-size: 20px; }
+.map-store-list-head > span { color: var(--muted); font-size: 9px; }
+.map-store-rows { display: grid; gap: 7px; }
+.map-store-rows > button { width: 100%; display: grid; grid-template-columns: 42px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 15px; padding: 9px; background: #fff; text-align: left; }
+.map-store-rows > button.active { border-color: var(--blue); box-shadow: 0 0 0 2px #0d70e815; }
+.store-list-logo { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: #fff; font-size: 9px; font-weight: 950; }
+.map-store-rows > button > span { min-width: 0; }
+.map-store-rows strong { display: block; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.map-store-rows small { display: block; overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.map-store-rows em { display: inline-block; margin-top: 5px; border-radius: 7px; padding: 3px 5px; background: #eef1f4; color: #596575; font-size: 7px; font-style: normal; font-weight: 750; }
+.map-store-rows em.connected { background: #e7f7ed; color: var(--green); }
+.map-store-rows i { color: var(--green); font-size: 18px; }
+.map-list-empty { display: grid; justify-items: center; gap: 6px; border: 1px dashed #c5cfd7; border-radius: 18px; padding: 27px 18px; color: #435064; text-align: center; }
+.map-list-empty span { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.map-list-empty button { margin-top: 5px; border: 1px solid var(--green); border-radius: 14px; padding: 7px 11px; background: #fff; color: var(--green); font-size: 9px; font-weight: 750; }
 
 .price-feed-state {
   display: grid;
@@ -230,7 +262,12 @@
 .feed-waiting > strong { color: #435064; }
 
 @media (min-width: 900px) {
-  .map-shell { grid-column: 1; grid-row: 2; min-height: 0; }
+  .map-display,
+  .map-store-list { grid-column: 1; grid-row: 2; min-height: 0; }
+  .map-display.active { display: flex; }
+  .map-display > .map-shell { min-height: 0; }
+  .map-store-list { padding: 20px 26px; }
+  .map-store-rows { grid-template-columns: 1fr 1fr; }
   .map-guide { top: 14px; font-size: 11px; }
   .recenter { bottom: 38px; right: 14px; }
   .sample-badge { bottom: 36px; left: 14px; }

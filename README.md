@@ -28,3 +28,10 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Estimated total-cost comparison using verified shipping, location tax, and round-trip travel
 - Selection and side-by-side comparison for up to three offers
 - Device-local history built only from observed official prices, with price-alert shortcuts
+
+## Map features
+
+- Interactive map and nearest-first store list built from real OpenStreetMap locations
+- Working 25-mile and connected-price filters that update as the map moves
+- Store saving, one-tap directions, and map focus from the store list
+- Selected-retailer catalog prices from connected official feeds, with clear inventory caveats
