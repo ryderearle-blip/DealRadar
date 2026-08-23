@@ -39,3 +39,15 @@ test('every interactive product sheet uses the shared accessible dialog behavior
   assert.match(clientPage, /if \(isDialogDismissKey\(event\.key\)\)/);
   assert.match(clientPage, /previouslyFocused\?\.isConnected/);
 });
+
+test('wide map and list views retain real discovery and visible attribution', async () => {
+  const clientPage = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  assert.match(clientPage, /buildStoreDiscoveryWindows\(visibleBounds/);
+  assert.match(clientPage, /Promise\.allSettled\(discoveryWindows\.map\(loadWindow\)\)/);
+  assert.doesNotMatch(clientPage, /if \(zoom < 9\)/);
+  assert.match(clientPage, /© OpenStreetMap contributors/);
+  assert.match(clientPage, /https:\/\/www\.openstreetmap\.org\/copyright/);
+  assert.match(clientPage, /Tiles by OpenFreeMap/);
+  assert.match(clientPage, /new maplibregl\.AttributionControl/);
+  assert.match(clientPage, /<MapDataAttribution list\/>/);
+});

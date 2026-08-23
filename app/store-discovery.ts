@@ -27,6 +27,94 @@ const USA_LIMITS = { south: 18, west: -171, north: 72, east: -66 } as const;
 const MAX_LATITUDE_SPAN = 5;
 const MAX_LONGITUDE_SPAN = 8;
 
+function boundedWindow(centerLatitude: number, centerLongitude: number, latitudeSpan: number, longitudeSpan: number): StoreBounds {
+  let south = centerLatitude - latitudeSpan / 2;
+  let north = centerLatitude + latitudeSpan / 2;
+  let west = centerLongitude - longitudeSpan / 2;
+  let east = centerLongitude + longitudeSpan / 2;
+
+  if (south < USA_LIMITS.south) { north += USA_LIMITS.south - south; south = USA_LIMITS.south; }
+  if (north > USA_LIMITS.north) { south -= north - USA_LIMITS.north; north = USA_LIMITS.north; }
+  if (west < USA_LIMITS.west) { east += USA_LIMITS.west - west; west = USA_LIMITS.west; }
+  if (east > USA_LIMITS.east) { west -= east - USA_LIMITS.east; east = USA_LIMITS.east; }
+
+  return {
+    south: Number(south.toFixed(4)),
+    west: Number(west.toFixed(4)),
+    north: Number(north.toFixed(4)),
+    east: Number(east.toFixed(4)),
+  };
+}
+
+export function buildStoreDiscoveryWindows(bounds: StoreBounds, maximumWindows = 6) {
+  const south = Math.max(USA_LIMITS.south, bounds.south);
+  const west = Math.max(USA_LIMITS.west, bounds.west);
+  const north = Math.min(USA_LIMITS.north, bounds.north);
+  const east = Math.min(USA_LIMITS.east, bounds.east);
+  if (south >= north || west >= east || maximumWindows < 1) return [];
+
+  const latitudeSpan = north - south;
+  const longitudeSpan = east - west;
+  if (latitudeSpan <= MAX_LATITUDE_SPAN && longitudeSpan <= MAX_LONGITUDE_SPAN) {
+    return [{ south, west, north, east }].map(window => ({
+      south: Number(window.south.toFixed(4)),
+      west: Number(window.west.toFixed(4)),
+      north: Number(window.north.toFixed(4)),
+      east: Number(window.east.toFixed(4)),
+    }));
+  }
+
+  const requested = maximumWindows >= 6 ? 6 : maximumWindows >= 4 ? 4 : 1;
+  const widerThanTall = longitudeSpan / MAX_LONGITUDE_SPAN >= latitudeSpan / MAX_LATITUDE_SPAN;
+  const columns = requested === 6 ? (widerThanTall ? 3 : 2) : requested === 4 ? 2 : 1;
+  const rows = Math.ceil(requested / columns);
+  const windowLatitudeSpan = Math.min(MAX_LATITUDE_SPAN, latitudeSpan / rows);
+  const windowLongitudeSpan = Math.min(MAX_LONGITUDE_SPAN, longitudeSpan / columns);
+  const windows: StoreBounds[] = [];
+
+  for (let row = 0; row < rows && windows.length < requested; row += 1) {
+    for (let column = 0; column < columns && windows.length < requested; column += 1) {
+      const rawLatitude = south + ((row + .5) / rows) * latitudeSpan;
+      const rawLongitude = west + ((column + .5) / columns) * longitudeSpan;
+      const centerLatitude = Math.round(rawLatitude * 2) / 2;
+      const centerLongitude = Math.round(rawLongitude);
+      windows.push(boundedWindow(centerLatitude, centerLongitude, windowLatitudeSpan, windowLongitudeSpan));
+    }
+  }
+
+  return [...new Map(windows.map(window => [storeBoundsKey(window), window])).values()];
+}
+
+function storeFamily(name: string) {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const knownFamilies = ['best buy', 'micro center', 'walmart', 'target', 'gamestop', 'apple'];
+  return knownFamilies.find(family => normalized.includes(family)) ?? normalized.split(' ')[0] ?? normalized;
+}
+
+export function sampleStoreLocations(stores: StoreLocation[], maximum: number) {
+  if (maximum <= 0) return [];
+  const ordered = [...stores].sort((first, second) => first.name.localeCompare(second.name) || first.id.localeCompare(second.id));
+  const selected: StoreLocation[] = [];
+  const selectedIds = new Set<string>();
+  const families = new Set<string>();
+
+  for (const store of ordered) {
+    const family = storeFamily(store.name);
+    if (families.has(family)) continue;
+    families.add(family);
+    selected.push(store);
+    selectedIds.add(store.id);
+    if (selected.length === maximum) return selected;
+  }
+
+  for (const store of ordered) {
+    if (selectedIds.has(store.id)) continue;
+    selected.push(store);
+    if (selected.length === maximum) break;
+  }
+  return selected;
+}
+
 function cleanText(value: string | undefined, maximumLength: number) {
   return (value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maximumLength);
 }

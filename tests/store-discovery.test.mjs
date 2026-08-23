@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStoreDiscoveryQuery, normalizeStoreBounds, parseStoreLocations, storeBoundsKey } from '../app/store-discovery.ts';
+import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, normalizeStoreBounds, parseStoreLocations, sampleStoreLocations, storeBoundsKey } from '../app/store-discovery.ts';
 
 const bounds = { south: 35, west: -81.5, north: 35.5, east: -80.8 };
 
@@ -39,4 +39,29 @@ test('keeps real named records, cleans text, and removes nearby duplicates', () 
     source: 'openstreetmap',
     sourceUrl: 'https://www.openstreetmap.org/node/10',
   }]);
+});
+
+test('uses one detailed window nearby and bounded representative windows nationwide', () => {
+  assert.deepEqual(buildStoreDiscoveryWindows(bounds), [bounds]);
+  const nationwide = buildStoreDiscoveryWindows({ south: 18, west: -171, north: 72, east: -66 }, 6);
+  assert.equal(nationwide.length, 6);
+  assert.equal(new Set(nationwide.map(storeBoundsKey)).size, 6);
+  assert.equal(nationwide.every(window => window.south >= 18 && window.north <= 72 && window.west >= -171 && window.east <= -66), true);
+  assert.equal(nationwide.every(window => window.north - window.south <= 5 && window.east - window.west <= 8), true);
+  const regional = buildStoreDiscoveryWindows({ south: 30, west: -100, north: 42, east: -80 }, 4);
+  assert.equal(regional.length, 4);
+  assert.equal(new Set(regional.map(window => (window.south + window.north) / 2)).size, 2);
+  assert.equal(new Set(regional.map(window => (window.west + window.east) / 2)).size, 2);
+});
+
+test('samples a wide view with retailer variety before repeated brands', () => {
+  const stores = [
+    ['best-one', 'Best Buy Charlotte'],
+    ['best-two', 'Best Buy Seattle'],
+    ['target-one', 'Target Austin'],
+    ['walmart-one', 'Walmart Denver'],
+  ].map(([id, name], index) => ({ id, name, address: 'Mapped business location', coordinates: [-100 + index, 35], source: 'openstreetmap', sourceUrl: `https://www.openstreetmap.org/node/${index + 1}` }));
+  const sampled = sampleStoreLocations(stores, 3);
+  assert.equal(sampled.length, 3);
+  assert.deepEqual(new Set(sampled.map(store => store.name.split(' ')[0])), new Set(['Best', 'Target', 'Walmart']));
 });

@@ -93,6 +93,30 @@
 .sample-badge.store-retry:hover,
 .sample-badge.store-retry:focus-visible { background: #713013; outline: 2px solid #fff; outline-offset: 2px; }
 
+.map-data-attribution {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  border: 1px solid #dce3e7;
+  border-radius: 7px;
+  padding: 3px 6px;
+  background: #fffffff0;
+  color: #435064;
+  box-shadow: 0 2px 8px #10203614;
+  font-size: 7px;
+}
+
+.map-data-attribution a { color: inherit; text-decoration: none; }
+.map-data-attribution a:hover,
+.map-data-attribution a:focus-visible { color: var(--blue); text-decoration: underline; }
+.map-data-attribution.list-attribution { position: static; width: max-content; max-width: 100%; margin: 14px auto 0; transform: none; background: transparent; box-shadow: none; }
+
 .recenter {
   position: absolute;
   right: 10px;

@@ -8,7 +8,7 @@ import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch,
 import { defaultProfilePreferences, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences } from './profile-logic';
 import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './onboarding-logic';
 import type { RetailerStatus } from './retailer-connections';
-import { buildStoreDiscoveryQuery, parseStoreLocations, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
+import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, parseStoreLocations, sampleStoreLocations, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
 import { dialogWrapTarget, isDialogDismissKey } from './dialog-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
@@ -674,6 +674,10 @@ function SearchBox({ value, setValue, placeholder }: { value: string; setValue: 
 type MapView = { radius: number; count: number };
 type MapFocusRequest = { id: string; coordinates: [number, number]; nonce: number } | null;
 
+function MapDataAttribution({ list = false }: { list?: boolean }) {
+  return <div className={`map-data-attribution${list ? ' list-attribution' : ''}`} aria-label="Map data attribution"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a><span>·</span><a href="https://openfreemap.org/" target="_blank" rel="noreferrer">Tiles by OpenFreeMap</a></div>;
+}
+
 function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetailers, onVisibleStores, active, focusRequest, home }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void; filters: MapStoreFilters; verifiedRetailers: string[]; onVisibleStores: (stores: Offer[]) => void; active: boolean; focusRequest: MapFocusRequest; home: [number, number] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -832,77 +836,89 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
         if (cancelled) return;
         const zoom = activeMap.getZoom();
         searchController?.abort();
-
-        if (zoom < 9) {
-          liveMarkers.forEach(entry => entry.marker.remove());
-          liveMarkers = [];
-          setNeedsZoom(true);
-          setDiscoveryError(false);
-          setRefreshing(false);
-          updateVisibleStores();
-          return;
-        }
-
-        setNeedsZoom(false);
         setDiscoveryError(false);
         setRefreshing(true);
         const bounds = activeMap.getBounds();
-        const south = Math.max(18, bounds.getSouth());
-        const west = Math.max(-171, bounds.getWest());
-        const north = Math.min(72, bounds.getNorth());
-        const east = Math.min(-66, bounds.getEast());
-        const cacheKey = [south, west, north, east].map(value => value.toFixed(2)).join(':');
+        const visibleBounds: StoreBounds = {
+          south: Math.max(18, bounds.getSouth()),
+          west: Math.max(-171, bounds.getWest()),
+          north: Math.min(72, bounds.getNorth()),
+          east: Math.min(-66, bounds.getEast()),
+        };
+        const discoveryWindows = buildStoreDiscoveryWindows(visibleBounds, zoom >= 9 ? 1 : zoom >= 6.5 ? 4 : 6);
+        const detailedWindow = discoveryWindows.length === 1
+          && Math.abs(discoveryWindows[0].south - visibleBounds.south) < .001
+          && Math.abs(discoveryWindows[0].west - visibleBounds.west) < .001
+          && Math.abs(discoveryWindows[0].north - visibleBounds.north) < .001
+          && Math.abs(discoveryWindows[0].east - visibleBounds.east) < .001;
+        const overviewMode = !detailedWindow;
+        setNeedsZoom(overviewMode);
+        const requestController = new AbortController();
+        searchController = requestController;
+
+        const loadWindow = async (requestBounds: StoreBounds) => {
+          const cacheKey = `${overviewMode ? 'overview' : 'detail'}:${[requestBounds.south, requestBounds.west, requestBounds.north, requestBounds.east].map(value => value.toFixed(2)).join(':')}`;
+          const cached = storeCache.get(cacheKey);
+          if (cached) return cached;
+
+          const params = new URLSearchParams({
+            s: requestBounds.south.toFixed(4),
+            w: requestBounds.west.toFixed(4),
+            n: requestBounds.north.toFixed(4),
+            e: requestBounds.east.toFixed(4),
+          });
+          let discoveredStores: StoreLocation[];
+          const response = await fetch(`/api/stores?${params}`, { signal: requestController.signal, headers: { Accept: 'application/json' } });
+          if (response.ok) {
+            const data = await response.json() as { stores?: StoreLocation[] };
+            discoveredStores = data.stores ?? [];
+          } else if (!overviewMode) {
+            const query = buildStoreDiscoveryQuery(requestBounds);
+            const fallback = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`, {
+              signal: requestController.signal,
+              headers: { Accept: 'application/json' },
+            });
+            if (!fallback.ok) throw new Error('Store search unavailable');
+            const data = await fallback.json() as { elements?: OpenStreetMapElement[] };
+            discoveredStores = parseStoreLocations(data.elements ?? [], requestBounds);
+          } else {
+            throw new Error('Representative store search unavailable');
+          }
+
+          const displayStores = overviewMode ? sampleStoreLocations(discoveredStores, 10) : discoveredStores;
+          const realStores = displayStores.flatMap((store) => {
+            const [longitude, latitude] = store.coordinates;
+            const duplicate = offers.some(item => item.coordinates && item.store.toLowerCase().includes(store.name.toLowerCase()) && Math.abs(item.coordinates[0] - longitude) < .01 && Math.abs(item.coordinates[1] - latitude) < .01);
+            if (duplicate) return [];
+            const visual = storeVisual(store.name);
+            return [{
+              id: store.id,
+              store: store.name,
+              price: null,
+              distance: storeDistanceLabel(home, store.coordinates),
+              color: visual.color,
+              mark: visual.mark,
+              detail: 'Price feed not connected',
+              address: store.address,
+              coordinates: store.coordinates,
+              sourceUrl: store.sourceUrl,
+            } satisfies Offer];
+          });
+          storeCache.set(cacheKey, realStores);
+          return realStores;
+        };
 
         try {
-          let realStores = storeCache.get(cacheKey);
-          if (!realStores) {
-            searchController = new AbortController();
-            const params = new URLSearchParams({
-              s: south.toFixed(4),
-              w: west.toFixed(4),
-              n: north.toFixed(4),
-              e: east.toFixed(4),
-            });
-            let discoveredStores: StoreLocation[];
-            const response = await fetch(`/api/stores?${params}`, { signal: searchController.signal, headers: { Accept: 'application/json' } });
-            if (response.ok) {
-              const data = await response.json() as { stores?: StoreLocation[] };
-              discoveredStores = data.stores ?? [];
-            } else {
-              const requestBounds: StoreBounds = { south, west, north, east };
-              const query = buildStoreDiscoveryQuery(requestBounds);
-              const fallback = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`, {
-                signal: searchController.signal,
-                headers: { Accept: 'application/json' },
-              });
-              if (!fallback.ok) throw new Error('Store search unavailable');
-              const data = await fallback.json() as { elements?: OpenStreetMapElement[] };
-              discoveredStores = parseStoreLocations(data.elements ?? [], requestBounds);
-            }
-            realStores = discoveredStores.flatMap((store) => {
-              const [longitude, latitude] = store.coordinates;
-              const duplicate = offers.some(item => item.coordinates && item.store.toLowerCase().includes(store.name.toLowerCase()) && Math.abs(item.coordinates[0] - longitude) < .01 && Math.abs(item.coordinates[1] - latitude) < .01);
-              if (duplicate) return [];
-              const visual = storeVisual(store.name);
-              return [{
-                id: store.id,
-                store: store.name,
-                price: null,
-                distance: storeDistanceLabel(home, store.coordinates),
-                color: visual.color,
-                mark: visual.mark,
-                detail: 'Price feed not connected',
-                address: store.address,
-                coordinates: store.coordinates,
-                sourceUrl: store.sourceUrl,
-              } satisfies Offer];
-            });
-            storeCache.set(cacheKey, realStores);
-          }
+          if (!discoveryWindows.length) throw new Error('Map is outside the supported U.S. area');
+          const results = await Promise.allSettled(discoveryWindows.map(loadWindow));
+          if (requestController.signal.aborted) return;
+          const successfulWindows = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
+          if (!successfulWindows.length) throw new Error('Store search unavailable');
+          const realStores = [...new globalThis.Map(successfulWindows.flat().map(store => [store.id ?? store.store, store])).values()];
 
           if (cancelled) return;
           liveMarkers.forEach(entry => entry.marker.remove());
-          liveMarkers = (realStores ?? []).map((item: Offer) => createOfferMarker(item, true));
+          liveMarkers = realStores.map((item: Offer) => createOfferMarker(item, true));
           updateVisibleStores();
           setDiscoveryError(false);
           setRefreshing(false);
@@ -922,7 +938,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
         refreshTimer = window.setTimeout(refreshRealStores, 320);
       };
 
-      activeMap.on('movestart', () => setRefreshing(true));
+      activeMap.on('movestart', () => { searchController?.abort(); setRefreshing(true); });
       activeMap.on('moveend', scheduleRefresh);
 
       activeMap.once('load', () => {
@@ -964,7 +980,8 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
     <button className="recenter" onClick={recenter} aria-label="Recenter map on nearby deals">⌖ <span>Recenter</span></button>
     {discoveryError
       ? <button className="sample-badge store-retry" onClick={() => refreshStoresRef.current()}><b>Store search paused</b><span>Tap to retry real locations</span></button>
-      : <div className={`sample-badge ${refreshing ? 'refreshing' : ''}`}><b>{refreshing ? 'Searching area…' : needsZoom ? 'Zoom in for stores' : `${view.count} real stores`}</b><span>{refreshing ? 'Checking mapped retailers' : needsZoom ? 'Real locations load closer' : 'U.S. mapped locations only'}</span></div>}
+      : <div className={`sample-badge ${refreshing ? 'refreshing' : ''}`}><b>{refreshing ? 'Searching area…' : needsZoom ? `${view.count} representative stores` : `${view.count} real stores`}</b><span>{refreshing ? 'Checking mapped retailers' : needsZoom ? 'Zoom in for denser real locations' : 'U.S. mapped locations only'}</span></div>}
+    <MapDataAttribution/>
   </div>;
 }
 
@@ -1068,7 +1085,7 @@ function MapStoreList({ stores, selected, verifiedRetailers, filters, home, onSe
     const connected = verifiedRetailers.some(retailer => retailerMatchesStore(retailer, store.store));
     const active = (selected.id ?? selected.store) === (store.id ?? store.store);
     return <button key={store.id ?? store.store} className={active ? 'active' : ''} onClick={() => onSelect(store)}><b className="store-list-logo" style={{ background: store.color }}>{store.mark}</b><span><strong>{store.store}</strong><small>{distance === null ? store.distance : storeDistanceLabel(home, store.coordinates!)} · {store.address}</small><em className={connected ? 'connected' : ''}>{connected ? '✓ Price connected' : 'Mapped store'}</em></span><i>›</i></button>;
-  })}</div> : <div className="map-list-empty"><b>No stores match</b><span>{filters.verifiedOnly ? 'No connected retailer price feeds are visible in this area yet.' : 'Move the map or broaden the distance filter.'}</span><button onClick={onClearFilters}>Clear map filters</button></div>}</section>;
+  })}</div> : <div className="map-list-empty"><b>No stores match</b><span>{filters.verifiedOnly ? 'No connected retailer price feeds are visible in this area yet.' : 'Move the map or broaden the distance filter.'}</span><button onClick={onClearFilters}>Clear map filters</button></div>}<MapDataAttribution list/></section>;
 }
 
 function LivePriceResults({ query, search, storeName }: { query: string; search: PriceSearch; storeName?: string }) {
