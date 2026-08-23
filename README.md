@@ -68,6 +68,7 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Offline status feedback and live Saved/Alerts navigation counts
 - Replayable product tour from Profile
 - Installable mobile-app manifest, iPhone safe-area support, and standalone display metadata
+- Accessible sheets with contained focus, Escape dismissal, and focus restoration
 
 See [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) for the remaining production requirements and current prototype limits.
 

@@ -9,6 +9,7 @@ import { defaultProfilePreferences, fulfillmentLabel, lookupUsZip, normalizeUsZi
 import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './onboarding-logic';
 import type { RetailerStatus } from './retailer-connections';
 import { buildStoreDiscoveryQuery, parseStoreLocations, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
+import { dialogWrapTarget, isDialogDismissKey } from './dialog-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -143,6 +144,50 @@ type MapLibreNamespace = {
   ScaleControl: new (options: Record<string, unknown>) => unknown;
 };
 let mapLibraryPromise: Promise<MapLibreNamespace> | null = null;
+
+const DIALOG_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function useAccessibleDialog(onClose: () => void) {
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => {
+      const preferredFocusable = dialogRef.current?.querySelector<HTMLElement>('[data-dialog-initial-focus]');
+      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR);
+      (preferredFocusable ?? firstFocusable ?? dialogRef.current)?.focus();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, []);
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (isDialogDismissKey(event.key)) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab' || !dialogRef.current) return;
+    const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR));
+    const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
+    const targetIndex = dialogWrapTarget(currentIndex, focusable.length, event.shiftKey);
+    if (targetIndex === null) return;
+    event.preventDefault();
+    focusable[targetIndex]?.focus();
+  };
+
+  return { ref: dialogRef, tabIndex: -1, onKeyDown };
+}
 
 function loadMapLibrary() {
   if (typeof window === 'undefined') return Promise.reject(new Error('Map requires a browser'));
@@ -513,6 +558,7 @@ function BarcodeScanner({ onClose, onFound }: { onClose: () => void; onFound: (c
   const videoRef = useRef<HTMLVideoElement>(null);
   const [manualCode, setManualCode] = useState('');
   const [status, setStatus] = useState('Starting camera…');
+  const dialog = useAccessibleDialog(onClose);
 
   useEffect(() => {
     let active = true;
@@ -562,11 +608,12 @@ function BarcodeScanner({ onClose, onFound }: { onClose: () => void; onFound: (c
     else setStatus('Enter a valid 8–14 digit UPC or EAN code.');
   };
 
-  return <div className="filter-backdrop scanner-backdrop" role="presentation"><section className="barcode-sheet" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div className="filter-sheet-head"><div><small>EXACT PRODUCT SEARCH</small><h2 id="scanner-title">Scan barcode</h2></div><button onClick={onClose} aria-label="Close barcode scanner">×</button></div><div className="camera-view"><video ref={videoRef} muted playsInline/><span/><b>UPC / EAN</b></div><p>{status}</p><form onSubmit={submit}><label><span>Enter barcode manually</span><input inputMode="numeric" autoComplete="off" value={manualCode} onChange={event => setManualCode(event.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="8–14 digit code"/></label><button type="submit">Search exact product</button></form><small className="privacy-note">Camera video stays on this device and is never uploaded.</small></section></div>;
+  return <div className="filter-backdrop scanner-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="barcode-sheet" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div className="filter-sheet-head"><div><small>EXACT PRODUCT SEARCH</small><h2 id="scanner-title">Scan barcode</h2></div><button onClick={onClose} aria-label="Close barcode scanner">×</button></div><div className="camera-view"><video ref={videoRef} muted playsInline/><span/><b>UPC / EAN</b></div><p role="status" aria-live="polite">{status}</p><form onSubmit={submit}><label><span>Enter barcode manually</span><input inputMode="numeric" autoComplete="off" value={manualCode} onChange={event => setManualCode(event.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="8–14 digit code"/></label><button type="submit">Search exact product</button></form><small className="privacy-note">Camera video stays on this device and is never uploaded.</small></section></div>;
 }
 
 function CompareSheet({ items, scope, home, onClose }: { items: LivePrice[]; scope: SearchFilters['scope']; home: [number, number]; onClose: () => void }) {
-  return <div className="filter-backdrop compare-backdrop" role="presentation"><section className="compare-sheet" role="dialog" aria-modal="true" aria-labelledby="compare-title"><div className="filter-sheet-head"><div><small>SIDE-BY-SIDE</small><h2 id="compare-title">Compare {items.length} deals</h2></div><button onClick={onClose} aria-label="Close comparison">×</button></div><div className="compare-grid">{items.map(item => {
+  const dialog = useAccessibleDialog(onClose);
+  return <div className="filter-backdrop compare-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="compare-sheet" role="dialog" aria-modal="true" aria-labelledby="compare-title"><div className="filter-sheet-head"><div><small>SIDE-BY-SIDE</small><h2 id="compare-title">Compare {items.length} deals</h2></div><button onClick={onClose} aria-label="Close comparison">×</button></div><div className="compare-grid">{items.map(item => {
     const cost = costForOffer(item, scope, home);
     const distance = nearestRetailerDistance(item.retailer, home);
     return <article key={item.id}><div className="compare-brand">{item.retailer}</div><h3>{item.title}</h3><dl><div><dt>Item price</dt><dd>${item.price.toFixed(2)}</dd></div><div className="total"><dt>{cost.complete ? 'Estimated total' : 'Partial total'}</dt><dd>${cost.total.toFixed(2)}</dd></div><div><dt>Tax estimate</dt><dd>${cost.tax.toFixed(2)}</dd></div><div><dt>Shipping</dt><dd>{cost.shipping === null ? 'Not provided' : cost.shipping === 0 ? 'Free' : `$${cost.shipping.toFixed(2)}`}</dd></div><div><dt>Round-trip travel</dt><dd>{cost.travel === null ? 'Not applicable' : `$${cost.travel.toFixed(2)}`}</dd></div><div><dt>Distance</dt><dd>{distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</dd></div><div><dt>Availability</dt><dd>{item.availability}</dd></div><div><dt>Fulfillment</dt><dd>{item.fulfillment.join(' / ') || 'Not provided'}</dd></div><div><dt>Model match</dt><dd>{item.matchType}</dd></div><div><dt>Returns</dt><dd><a href={item.productUrl} target="_blank" rel="noreferrer">See retailer policy</a></dd></div></dl></article>;
@@ -576,6 +623,7 @@ function CompareSheet({ items, scope, home, onClose }: { items: LivePrice[]; sco
 function PriceHistorySheet({ item, onClose }: { item: LivePrice; onClose: () => void }) {
   const [history] = useState<PriceHistoryPoint[]>(() => getVerifiedPriceHistory(item.id));
   const [alertOn, setAlertOn] = useState(() => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true');
+  const dialog = useAccessibleDialog(onClose);
   const prices = history.map(point => point.price);
   const minimum = Math.min(...prices, item.price);
   const maximum = Math.max(...prices, item.price);
@@ -604,15 +652,16 @@ function PriceHistorySheet({ item, onClose }: { item: LivePrice; onClose: () => 
     }
   };
 
-  return <div className="filter-backdrop history-backdrop" role="presentation"><section className="history-sheet" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="filter-sheet-head"><div><small>VERIFIED OBSERVATIONS</small><h2 id="history-title">Price history</h2></div><button onClick={onClose} aria-label="Close price history">×</button></div><h3>{item.title}</h3><div className="history-current"><span>Current official price</span><strong>${item.price.toFixed(2)}</strong></div>{history.length > 1 ? <><div className="history-chart" aria-label={`${history.length} saved price observations`}>{history.map((point, index) => <i key={`${point.recordedAt}-${index}`} style={{ height: `${24 + ((point.price - minimum) / spread) * 58}%` }} title={`${new Date(point.recordedAt).toLocaleDateString()}: $${point.price.toFixed(2)}`}/>)}</div><div className="history-range"><span>Low ${minimum.toFixed(2)}</span><span>High ${maximum.toFixed(2)}</span></div></> : <div className="history-empty"><b>First verified price saved</b><span>DealRadar will build this chart as official prices are observed over time.</span></div>}<button className={`history-alert ${alertOn ? 'active' : ''}`} onClick={toggleAlert}>{alertOn ? '✓ Price alert active' : '♧ Alert me when the price drops'}</button><p>Turning on an alert also saves this verified product. History is recorded from connected official retailer feeds on this device; no past prices are invented.</p></section></div>;
+  return <div className="filter-backdrop history-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="history-sheet" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="filter-sheet-head"><div><small>VERIFIED OBSERVATIONS</small><h2 id="history-title">Price history</h2></div><button onClick={onClose} aria-label="Close price history">×</button></div><h3>{item.title}</h3><div className="history-current"><span>Current official price</span><strong>${item.price.toFixed(2)}</strong></div>{history.length > 1 ? <><div className="history-chart" aria-label={`${history.length} saved price observations`}>{history.map((point, index) => <i key={`${point.recordedAt}-${index}`} style={{ height: `${24 + ((point.price - minimum) / spread) * 58}%` }} title={`${new Date(point.recordedAt).toLocaleDateString()}: $${point.price.toFixed(2)}`}/>)}</div><div className="history-range"><span>Low ${minimum.toFixed(2)}</span><span>High ${maximum.toFixed(2)}</span></div></> : <div className="history-empty"><b>First verified price saved</b><span>DealRadar will build this chart as official prices are observed over time.</span></div>}<button className={`history-alert ${alertOn ? 'active' : ''}`} onClick={toggleAlert}>{alertOn ? '✓ Price alert active' : '♧ Alert me when the price drops'}</button><p>Turning on an alert also saves this verified product. History is recorded from connected official retailer feeds on this device; no past prices are invented.</p></section></div>;
 }
 
 function SearchFilterSheet({ draft, setDraft, resetFilters, onClose, onApply }: { draft: SearchFilters; setDraft: (filters: SearchFilters) => void; resetFilters: SearchFilters; onClose: () => void; onApply: () => void }) {
   const retailerOptions = ['Best Buy', 'Walmart', 'Amazon', 'Target', 'Apple', 'Micro Center'];
+  const dialog = useAccessibleDialog(onClose);
   const update = (change: Partial<SearchFilters>) => setDraft({ ...draft, ...change });
   const toggleRetailer = (retailer: string) => update({ retailers: draft.retailers.includes(retailer) ? draft.retailers.filter(item => item !== retailer) : [...draft.retailers, retailer] });
 
-  return <div className="filter-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title"><div className="filter-sheet-head"><div><small>REFINE RESULTS</small><h2 id="filter-title">Search filters</h2></div><button onClick={onClose} aria-label="Close filters">×</button></div>
+  return <div className="filter-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title"><div className="filter-sheet-head"><div><small>REFINE RESULTS</small><h2 id="filter-title">Search filters</h2></div><button onClick={onClose} aria-label="Close filters">×</button></div>
     <label className="filter-field"><span>Sort results</span><select value={draft.sort} onChange={event => update({ sort: event.target.value as SearchFilters['sort'] })}><option value="best">Best match</option><option value="total-cost">Estimated total cost</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="distance">Distance: nearest first</option></select></label>
     <div className="filter-grid"><label className="filter-field"><span>Maximum price</span><select value={draft.maxPrice ?? ''} onChange={event => update({ maxPrice: event.target.value ? Number(event.target.value) : null })}><option value="">Any price</option><option value="100">Under $100</option><option value="250">Under $250</option><option value="500">Under $500</option><option value="1000">Under $1,000</option><option value="2000">Under $2,000</option></select></label><label className="filter-field"><span>Store distance</span><select value={draft.maxDistance ?? ''} onChange={event => update({ maxDistance: event.target.value ? Number(event.target.value) : null })}><option value="">Any distance</option><option value="5">Within 5 miles</option><option value="10">Within 10 miles</option><option value="25">Within 25 miles</option><option value="50">Within 50 miles</option></select></label></div>
     <fieldset><legend>Availability</legend><div className="filter-options">{[['all','Any availability'],['available','In stock only']].map(option => <button key={option[0]} className={draft.availability === option[0] ? 'selected' : ''} onClick={() => update({ availability: option[0] as SearchFilters['availability'] })}>{draft.availability === option[0] ? '✓ ' : ''}{option[1]}</button>)}</div></fieldset>
@@ -1223,6 +1272,7 @@ function PriceWatchSheet({ product, setting, onClose, onSave }: { product: Saved
   const [mode, setMode] = useState<'any' | 'five' | 'ten' | 'custom'>(initialMode);
   const [custom, setCustom] = useState(setting.targetPrice === null ? '' : setting.targetPrice.toFixed(2));
   const [backInStock, setBackInStock] = useState(setting.backInStock);
+  const dialog = useAccessibleDialog(onClose);
   const customPrice = Number(custom);
   const validCustom = mode !== 'custom' || (Number.isFinite(customPrice) && customPrice > 0 && customPrice < product.price);
   const submit = () => {
@@ -1231,7 +1281,7 @@ function PriceWatchSheet({ product, setting, onClose, onSave }: { product: Saved
     onSave({ ...setting, targetPrice, backInStock });
   };
 
-  return <div className="filter-backdrop watch-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="watch-sheet" role="dialog" aria-modal="true" aria-labelledby="watch-settings-title"><div className="filter-sheet-head"><div><small>VERIFIED PRICE WATCH</small><h2 id="watch-settings-title">Set your target</h2></div><button onClick={onClose} aria-label="Close price-watch settings">×</button></div><h3>{product.title}</h3><p>Saved verified price <b>${product.price.toFixed(2)}</b></p><div className="watch-targets"><button className={mode === 'any' ? 'selected' : ''} onClick={() => setMode('any')}>Any drop<small>Below ${product.price.toFixed(2)}</small></button><button className={mode === 'five' ? 'selected' : ''} onClick={() => setMode('five')}>5% off<small>${fivePercent.toFixed(2)}</small></button><button className={mode === 'ten' ? 'selected' : ''} onClick={() => setMode('ten')}>10% off<small>${tenPercent.toFixed(2)}</small></button><button className={mode === 'custom' ? 'selected' : ''} onClick={() => setMode('custom')}>Custom<small>Your price</small></button></div>{mode === 'custom' && <label className="custom-target"><span>Notify me at or below</span><div>$ <input inputMode="decimal" value={custom} onChange={event => setCustom(event.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00"/></div>{!validCustom && <small>Enter a price below ${product.price.toFixed(2)}.</small>}</label>}<label className="stock-watch"><span><b>Back-in-stock alert</b><small>Notify when an official feed reports it available again.</small></span><input type="checkbox" checked={backInStock} onChange={event => setBackInStock(event.target.checked)}/><i/></label><button className="save-watch" disabled={!validCustom} onClick={submit}>Save watch settings</button><small className="watch-disclaimer">Alerts are evaluated only when DealRadar receives a matching official retailer price.</small></section></div>;
+  return <div className="filter-backdrop watch-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="watch-sheet" role="dialog" aria-modal="true" aria-labelledby="watch-settings-title"><div className="filter-sheet-head"><div><small>VERIFIED PRICE WATCH</small><h2 id="watch-settings-title">Set your target</h2></div><button onClick={onClose} aria-label="Close price-watch settings">×</button></div><h3>{product.title}</h3><p>Saved verified price <b>${product.price.toFixed(2)}</b></p><div className="watch-targets"><button className={mode === 'any' ? 'selected' : ''} onClick={() => setMode('any')}>Any drop<small>Below ${product.price.toFixed(2)}</small></button><button className={mode === 'five' ? 'selected' : ''} onClick={() => setMode('five')}>5% off<small>${fivePercent.toFixed(2)}</small></button><button className={mode === 'ten' ? 'selected' : ''} onClick={() => setMode('ten')}>10% off<small>${tenPercent.toFixed(2)}</small></button><button className={mode === 'custom' ? 'selected' : ''} onClick={() => setMode('custom')}>Custom<small>Your price</small></button></div>{mode === 'custom' && <label className="custom-target"><span>Notify me at or below</span><div>$ <input inputMode="decimal" value={custom} onChange={event => setCustom(event.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00"/></div>{!validCustom && <small>Enter a price below ${product.price.toFixed(2)}.</small>}</label>}<label className="stock-watch"><span><b>Back-in-stock alert</b><small>Notify when an official feed reports it available again.</small></span><input type="checkbox" checked={backInStock} onChange={event => setBackInStock(event.target.checked)}/><i/></label><button className="save-watch" disabled={!validCustom} onClick={submit}>Save watch settings</button><small className="watch-disclaimer">Alerts are evaluated only when DealRadar receives a matching official retailer price.</small></section></div>;
 }
 type ProfilePanel = 'name' | 'location' | 'radius' | 'fulfillment' | 'connections' | 'privacy' | null;
 
@@ -1335,13 +1385,14 @@ function RetailerConnectionsSheet({ onClose }: { onClose: () => void }) {
 }
 
 function ProfileSheetFrame({ eyebrow, title, onClose, children }: { eyebrow: string; title: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="filter-backdrop profile-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="profile-sheet" role="dialog" aria-modal="true" aria-labelledby="profile-sheet-title"><div className="filter-sheet-head"><div><small>{eyebrow}</small><h2 id="profile-sheet-title">{title}</h2></div><button onClick={onClose} aria-label={`Close ${title}`}>×</button></div>{children}</section></div>;
+  const dialog = useAccessibleDialog(onClose);
+  return <div className="filter-backdrop profile-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="profile-sheet" role="dialog" aria-modal="true" aria-labelledby="profile-sheet-title"><div className="filter-sheet-head"><div><small>{eyebrow}</small><h2 id="profile-sheet-title">{title}</h2></div><button onClick={onClose} aria-label={`Close ${title}`}>×</button></div>{children}</section></div>;
 }
 
 function NameProfileSheet({ current, onClose, onSave }: { current: string; onClose: () => void; onSave: (name: string) => void }) {
   const [name, setName] = useState(current);
   const valid = name.trim().length > 0;
-  return <ProfileSheetFrame eyebrow="PROFILE" title="Display name" onClose={onClose}><label className="profile-field"><span>Name shown in DealRadar</span><input autoFocus maxLength={40} value={name} onChange={event => setName(event.target.value)} placeholder="Your name"/></label><button className="profile-save" disabled={!valid} onClick={() => valid && onSave(name.trim())}>Save name</button></ProfileSheetFrame>;
+  return <ProfileSheetFrame eyebrow="PROFILE" title="Display name" onClose={onClose}><label className="profile-field"><span>Name shown in DealRadar</span><input autoFocus data-dialog-initial-focus maxLength={40} value={name} onChange={event => setName(event.target.value)} placeholder="Your name"/></label><button className="profile-save" disabled={!valid} onClick={() => valid && onSave(name.trim())}>Save name</button></ProfileSheetFrame>;
 }
 
 function LocationProfileSheet({ currentZip, onClose, onSave }: { currentZip: string; onClose: () => void; onSave: (location: Pick<ProfilePreferences, 'zipCode' | 'locationLabel' | 'coordinates'>) => void }) {
@@ -1357,7 +1408,7 @@ function LocationProfileSheet({ currentZip, onClose, onSave }: { currentZip: str
       setStatus('error');
     }
   };
-  return <ProfileSheetFrame eyebrow="UNITED STATES" title="Home shopping area" onClose={onClose}><p className="profile-sheet-copy">Your ZIP sets the map center and drives local distance estimates. The exact street address is not requested.</p><label className="profile-field"><span>5-digit ZIP code</span><input autoFocus inputMode="numeric" value={zip} onChange={event => { setZip(event.target.value.replace(/\D/g, '').slice(0, 5)); setStatus('idle'); }} placeholder="28086"/></label>{status === 'error' && <p className="profile-field-error">Enter a valid U.S. ZIP code and try again.</p>}<button className="profile-save" disabled={zip.length !== 5 || status === 'loading'} onClick={save}>{status === 'loading' ? 'Finding ZIP…' : 'Use this home area'}</button><small className="profile-sheet-note">ZIP lookup uses the public Zippopotam.us postal service.</small></ProfileSheetFrame>;
+  return <ProfileSheetFrame eyebrow="UNITED STATES" title="Home shopping area" onClose={onClose}><p className="profile-sheet-copy">Your ZIP sets the map center and drives local distance estimates. The exact street address is not requested.</p><label className="profile-field"><span>5-digit ZIP code</span><input autoFocus data-dialog-initial-focus inputMode="numeric" value={zip} onChange={event => { setZip(event.target.value.replace(/\D/g, '').slice(0, 5)); setStatus('idle'); }} placeholder="28086"/></label>{status === 'error' && <p className="profile-field-error">Enter a valid U.S. ZIP code and try again.</p>}<button className="profile-save" disabled={zip.length !== 5 || status === 'loading'} onClick={save}>{status === 'loading' ? 'Finding ZIP…' : 'Use this home area'}</button><small className="profile-sheet-note">ZIP lookup uses the public Zippopotam.us postal service.</small></ProfileSheetFrame>;
 }
 
 function RadiusProfileSheet({ current, onClose, onSave }: { current: ProfilePreferences['searchRadius']; onClose: () => void; onSave: (radius: ProfilePreferences['searchRadius']) => void }) {
