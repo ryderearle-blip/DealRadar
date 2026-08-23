@@ -73,3 +73,5 @@ See [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) for the remaining production re
 ## Verification
 
 Every push and pull request runs the same staging gate: unit and contract tests, server-secret boundary checks, TypeScript, lint, a production build, and final artifact inspection. Run `pnpm verify` locally before staging.
+
+Store discovery is served through `/api/stores`. The endpoint accepts a small U.S. map bounding box, validates and normalizes it, queries OpenStreetMap, removes nearby duplicate records, and returns a cacheable location-only response. It intentionally does not invent store prices or inventory.

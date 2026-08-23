@@ -8,6 +8,7 @@ import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch,
 import { defaultProfilePreferences, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences } from './profile-logic';
 import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './onboarding-logic';
 import type { RetailerStatus } from './retailer-connections';
+import { buildStoreDiscoveryQuery, parseStoreLocations, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -23,6 +24,7 @@ type Offer = {
   address: string;
   coordinates?: [number, number];
   mapTier?: 1 | 2 | 3;
+  sourceUrl?: string;
 };
 
 type LivePrice = {
@@ -139,14 +141,6 @@ type MapLibreNamespace = {
   NavigationControl: new (options: Record<string, unknown>) => unknown;
   AttributionControl: new (options: Record<string, unknown>) => unknown;
   ScaleControl: new (options: Record<string, unknown>) => unknown;
-};
-type OverpassElement = {
-  id: number;
-  type: string;
-  lat?: number;
-  lon?: number;
-  center?: { lat?: number; lon?: number };
-  tags?: Record<string, string | undefined>;
 };
 let mapLibraryPromise: Promise<MapLibreNamespace> | null = null;
 
@@ -810,37 +804,45 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
         try {
           let realStores = storeCache.get(cacheKey);
           if (!realStores) {
-            const query = `[out:json][timeout:15];area["ISO3166-1"="US"][admin_level=2]->.us;nwr["shop"~"^(electronics|department_store|computer|appliance|video_games)$"](area.us)(${south.toFixed(5)},${west.toFixed(5)},${north.toFixed(5)},${east.toFixed(5)});out center 35;`;
             searchController = new AbortController();
-            const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`, {
-              signal: searchController.signal,
-              headers: { Accept: 'application/json' },
+            const params = new URLSearchParams({
+              s: south.toFixed(4),
+              w: west.toFixed(4),
+              n: north.toFixed(4),
+              e: east.toFixed(4),
             });
-            if (!response.ok) throw new Error('Store search unavailable');
-            const data = await response.json() as { elements?: OverpassElement[] };
-            realStores = (data.elements ?? []).flatMap((element) => {
-              const tags = element.tags ?? {};
-              const name = tags.name || tags.brand;
-              const lat = element.lat ?? element.center?.lat;
-              const lng = element.lon ?? element.center?.lon;
-              if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return [];
-              const latitude = Number(lat);
-              const longitude = Number(lng);
-              const duplicate = offers.some(item => item.coordinates && item.store.toLowerCase().includes(String(name).toLowerCase()) && Math.abs(item.coordinates[0] - longitude) < .01 && Math.abs(item.coordinates[1] - latitude) < .01);
+            let discoveredStores: StoreLocation[];
+            const response = await fetch(`/api/stores?${params}`, { signal: searchController.signal, headers: { Accept: 'application/json' } });
+            if (response.ok) {
+              const data = await response.json() as { stores?: StoreLocation[] };
+              discoveredStores = data.stores ?? [];
+            } else {
+              const requestBounds: StoreBounds = { south, west, north, east };
+              const query = buildStoreDiscoveryQuery(requestBounds);
+              const fallback = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`, {
+                signal: searchController.signal,
+                headers: { Accept: 'application/json' },
+              });
+              if (!fallback.ok) throw new Error('Store search unavailable');
+              const data = await fallback.json() as { elements?: OpenStreetMapElement[] };
+              discoveredStores = parseStoreLocations(data.elements ?? [], requestBounds);
+            }
+            realStores = discoveredStores.flatMap((store) => {
+              const [longitude, latitude] = store.coordinates;
+              const duplicate = offers.some(item => item.coordinates && item.store.toLowerCase().includes(store.name.toLowerCase()) && Math.abs(item.coordinates[0] - longitude) < .01 && Math.abs(item.coordinates[1] - latitude) < .01);
               if (duplicate) return [];
-              const visual = storeVisual(String(name));
-              const streetAddress = [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' ');
-              const locality = [tags['addr:city'], tags['addr:state']].filter(Boolean).join(', ');
+              const visual = storeVisual(store.name);
               return [{
-                id: `osm-${element.type}-${element.id}`,
-                store: String(name),
+                id: store.id,
+                store: store.name,
                 price: null,
                 distance: 'Visible map area',
                 color: visual.color,
                 mark: visual.mark,
                 detail: 'Price feed not connected',
-                address: [streetAddress, locality].filter(Boolean).join(' · ') || 'Mapped business location',
-                coordinates: [longitude, latitude] as [number, number],
+                address: store.address,
+                coordinates: store.coordinates,
+                sourceUrl: store.sourceUrl,
               } satisfies Offer];
             });
             storeCache.set(cacheKey, realStores);
@@ -984,7 +986,7 @@ function Map({ query, setQuery, offer, setOffer, notify, preferences }: { query:
     />}
     <article className="sheet"><i/>
       <div className="sheet-head"><div><small>{view.count} matching stores in this map area</small><h2>{display === 'list' ? 'Selected store' : 'Deals near this store'}</h2></div><button className={selectedSaved ? 'saved' : ''} onClick={toggleSavedStore} aria-label={`${selectedSaved ? 'Remove' : 'Save'} selected store`}>{selectedSaved ? '♥' : '♡'}</button></div>
-      {view.count > 0 ? <div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{verifiedRetailers.some(retailer => retailerMatchesStore(retailer, offer.store)) ? 'Price feed connected' : 'Mapped location'}</em></span><strong className="no-price">{selectedSearch.offers.length ? 'Catalog price below' : 'Price unavailable'}{offer.coordinates ? <a className="store-directions" href={`https://www.google.com/maps/dir/?api=1&destination=${offer.coordinates[1]},${offer.coordinates[0]}`} target="_blank" rel="noreferrer">Directions ›</a> : null}</strong></div> : <div className="area-empty"><b>No stores match these controls</b><span>Turn off a filter, zoom in, or move the map to another U.S. area.</span></div>}
+      {view.count > 0 ? <div className="deal"><b className="logo" style={{background:offer.color}}>{offer.mark}</b><span><h3>{offer.store}</h3><small>{offer.distance} · {offer.detail}</small><small className="address">{offer.address}</small><em>{verifiedRetailers.some(retailer => retailerMatchesStore(retailer, offer.store)) ? 'Price feed connected' : 'Mapped location'}{offer.sourceUrl && <a className="store-source" href={offer.sourceUrl} target="_blank" rel="noreferrer">Verify on OpenStreetMap ↗</a>}</em></span><strong className="no-price">{selectedSearch.offers.length ? 'Catalog price below' : 'Price unavailable'}{offer.coordinates ? <a className="store-directions" href={`https://www.google.com/maps/dir/?api=1&destination=${offer.coordinates[1]},${offer.coordinates[0]}`} target="_blank" rel="noreferrer">Directions ›</a> : null}</strong></div> : <div className="area-empty"><b>No stores match these controls</b><span>Turn off a filter, zoom in, or move the map to another U.S. area.</span></div>}
       {view.count > 0 && <LivePriceResults
         query={query}
         search={selectedSearch}

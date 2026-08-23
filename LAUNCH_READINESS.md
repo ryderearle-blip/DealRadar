@@ -16,8 +16,9 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 
 - [x] Real U.S. store discovery from OpenStreetMap records
 - [x] U.S. map bounds, pan/zoom loading, and honest mapped-location labels
+- [x] Server-side U.S. boundary validation, six-hour caching, and nearby-record deduplication
 - [ ] Replace the shared public Overpass endpoint with a production-ready store index or contracted map data service
-- [ ] Add server-side caching, deduplication, monitoring, and an update schedule for store locations
+- [ ] Add monitoring and an update schedule for store locations
 - [ ] Verify required OpenStreetMap and map-tile attribution in the final distribution
 
 ## Alerts and persistence
