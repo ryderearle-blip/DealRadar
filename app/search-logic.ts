@@ -104,17 +104,18 @@ export function calculateEstimatedTotalCost(item: { price: number; shippingCost:
   return { item: item.price, tax, shipping: null, travel: null, total: item.price + tax, complete: false, method: scope === 'local' ? 'Local pickup' : 'Online' };
 }
 
-export function filterAndSortOffers<T extends FilterableOffer>(offers: T[], filters: FilterValues, distanceFor: (retailer: string) => number | null, totalFor?: (item: T) => number | Pick<EstimatedCost, 'total' | 'complete'>) {
+export function filterAndSortOffers<T extends FilterableOffer>(offers: T[], filters: FilterValues, distanceFor: (retailer: string, item?: T) => number | null, totalFor?: (item: T) => number | Pick<EstimatedCost, 'total' | 'complete'>) {
   const matches = offers.filter(item => {
-    const distance = distanceFor(item.retailer);
+    const distance = distanceFor(item.retailer, item);
     const hasPickup = item.fulfillment.some(option => option.toLowerCase().includes('pickup')) && distance !== null;
     const hasShipping = item.fulfillment.some(option => option.toLowerCase().includes('shipping'));
     if (filters.scope === 'local' && !hasPickup) return false;
     if (filters.scope === 'online' && !hasShipping) return false;
     if (filters.maxPrice !== null && item.price > filters.maxPrice) return false;
-    if (filters.maxDistance !== null && (distance === null || distance > filters.maxDistance)) return false;
+    if (filters.maxDistance !== null && (distance === null || distance > filters.maxDistance) && (filters.scope === 'local' || !hasShipping)) return false;
     if (filters.availability === 'available' && item.availability.toLowerCase().includes('not confirmed')) return false;
-    if (filters.fulfillment !== 'all' && !item.fulfillment.some(option => option.toLowerCase().includes(filters.fulfillment))) return false;
+    if (filters.fulfillment === 'pickup' && !hasPickup) return false;
+    if (filters.fulfillment === 'shipping' && !hasShipping) return false;
     if (filters.retailers.length && !filters.retailers.includes(item.retailer)) return false;
     return true;
   });
@@ -122,7 +123,7 @@ export function filterAndSortOffers<T extends FilterableOffer>(offers: T[], filt
   return [...matches].sort((first, second) => {
     if (filters.sort === 'price-low') return first.price - second.price;
     if (filters.sort === 'price-high') return second.price - first.price;
-    if (filters.sort === 'distance') return (distanceFor(first.retailer) ?? Infinity) - (distanceFor(second.retailer) ?? Infinity);
+    if (filters.sort === 'distance') return (distanceFor(first.retailer, first) ?? Infinity) - (distanceFor(second.retailer, second) ?? Infinity);
     if (filters.sort === 'total-cost') {
       const firstValue = totalFor?.(first) ?? first.price;
       const secondValue = totalFor?.(second) ?? second.price;

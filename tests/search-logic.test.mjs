@@ -13,7 +13,8 @@ const defaults = { sort: 'best', scope: 'both', maxPrice: null, maxDistance: nul
 
 test('filters verified offers by price, distance, availability, fulfillment, and retailer', () => {
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, maxPrice: 750 }, distanceFor).map(item => item.id), ['amazon', 'walmart']);
-  assert.deepEqual(filterAndSortOffers(offers, { ...defaults, maxDistance: 5 }, distanceFor).map(item => item.id), ['walmart']);
+  assert.deepEqual(filterAndSortOffers(offers, { ...defaults, maxDistance: 5 }, distanceFor).map(item => item.id), ['bestbuy', 'amazon', 'walmart']);
+  assert.deepEqual(filterAndSortOffers(offers, { ...defaults, scope: 'local', maxDistance: 5 }, distanceFor).map(item => item.id), ['walmart']);
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, availability: 'available' }, distanceFor).map(item => item.id), ['bestbuy', 'amazon']);
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, fulfillment: 'shipping' }, distanceFor).map(item => item.id), ['bestbuy', 'amazon']);
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, retailers: ['Best Buy'] }, distanceFor).map(item => item.id), ['bestbuy']);
@@ -26,6 +27,11 @@ test('sorts verified offers by price and nearest physical store', () => {
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, sort: 'distance' }, distanceFor).map(item => item.id), ['walmart', 'bestbuy', 'amazon']);
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, sort: 'total-cost' }, distanceFor, item => ({ bestbuy: 860, amazon: 810, walmart: 830 })[item.id]).map(item => item.id), ['amazon', 'walmart', 'bestbuy']);
   assert.deepEqual(filterAndSortOffers(offers, { ...defaults, sort: 'total-cost' }, distanceFor, item => item.id === 'amazon' ? { total: 700, complete: false } : { total: item.price + 50, complete: true }).map(item => item.id), ['walmart', 'bestbuy', 'amazon']);
+  const inventoryDistance = (retailer, item) => item?.id === 'bestbuy' ? 1.2 : distanceFor(retailer);
+  assert.deepEqual(filterAndSortOffers(offers, { ...defaults, sort: 'distance' }, inventoryDistance).map(item => item.id), ['bestbuy', 'walmart', 'amazon']);
+  const unavailablePickup = (retailer, item) => item?.id === 'bestbuy' ? null : distanceFor(retailer);
+  assert.deepEqual(filterAndSortOffers(offers, { ...defaults, scope: 'local' }, unavailablePickup).map(item => item.id), ['walmart']);
+  assert.deepEqual(filterAndSortOffers(offers, { ...defaults, fulfillment: 'pickup' }, unavailablePickup).map(item => item.id), ['walmart']);
 });
 
 test('labels price verification age and flags saved observations after 24 hours', () => {

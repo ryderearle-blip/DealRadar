@@ -10,6 +10,37 @@ export type InventoryStore = {
   minPickupHours: number | null;
 };
 
+export type VerifiedInventoryCheck = {
+  sku: string;
+  zipCode: string;
+  checkedAt: string;
+  ispuEligible: boolean;
+  stores: InventoryStore[];
+};
+
+export type InventoryEvidence = {
+  state: 'unverified' | 'available' | 'unavailable';
+  distance: number | null;
+  storeCount: number;
+  lowStock: boolean;
+};
+
+const INVENTORY_FRESH_MS = 15 * 60 * 1000;
+
+export function inventoryEvidence(check: VerifiedInventoryCheck | undefined, sku: string, zipCode: string, now = Date.now()): InventoryEvidence {
+  if (!check || check.sku !== sku || check.zipCode !== zipCode) return { state: 'unverified', distance: null, storeCount: 0, lowStock: false };
+  const checkedAt = Date.parse(check.checkedAt);
+  const age = now - checkedAt;
+  if (!Number.isFinite(checkedAt) || age < -5 * 60 * 1000 || age > INVENTORY_FRESH_MS) return { state: 'unverified', distance: null, storeCount: 0, lowStock: false };
+  if (!check.ispuEligible || !check.stores.length) return { state: 'unavailable', distance: null, storeCount: 0, lowStock: false };
+  return {
+    state: 'available',
+    distance: check.stores[0].distance,
+    storeCount: check.stores.length,
+    lowStock: check.stores[0].lowStock,
+  };
+}
+
 export type BestBuyInventoryPayload = {
   ispuEligible?: boolean;
   stores?: unknown[];

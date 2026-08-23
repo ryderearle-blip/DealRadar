@@ -87,6 +87,8 @@
 .result-badges .match-possible { background: #eef1f4; color: #586575; }
 .result-badges .verification-fresh { background: #e8f4ff; color: var(--blue); }
 .result-badges .verification-stale { background: #fff0ed; color: #a0493e; }
+.result-badges .inventory-available { background: #dff5e7; color: var(--green); }
+.result-badges .inventory-unavailable { background: #fff0ed; color: #a0493e; }
 .result-price { text-align: right; }
 .result-price strong { display: block; color: var(--green); font-size: 17px; }
 .result-price small { display: block; color: #8a96a3; font-size: 8px; text-decoration: line-through; }
@@ -186,6 +188,7 @@
 .compare-grid .total { color: var(--green); font-size: 11px; }
 .compare-grid a { color: var(--blue); }
 .stale-copy { color: #a0493e !important; }
+.confirmed-copy { color: var(--green); }
 .cost-disclaimer { margin: 4px 3px 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
 
 .history-sheet > h3 { margin: 2px 0 12px; font-size: 13px; }

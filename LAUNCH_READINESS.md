@@ -6,6 +6,7 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 
 - [x] Best Buy official catalog connector implemented
 - [x] Best Buy near-real-time store-pickup inventory connector implemented
+- [x] Apply fresh store inventory to local distance, total-cost ranking, and Local filtering
 - [x] Server-only credential handling and live connection probe
 - [ ] Add and verify a production `BEST_BUY_API_KEY`
 - [ ] Obtain Amazon Associates and Creators API approval before implementing its connector
