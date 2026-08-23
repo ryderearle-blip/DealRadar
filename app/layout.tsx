@@ -9,6 +9,8 @@ import './alerts.css';
 import './profile.css';
 import './onboarding.css';
 import './legal.css';
+import './accessibility.css';
+import { brand } from './brand';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -21,25 +23,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'DealRadar — Find it cheaper. Find it closer.',
-  description: 'Compare local and online prices, availability, and distance in one search.',
-  applicationName: 'DealRadar',
+  title: `${brand.name} — ${brand.tagline}`,
+  description: brand.description,
+  applicationName: brand.name,
   manifest: '/manifest.webmanifest',
   formatDetection: { telephone: false },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'DealRadar',
+    title: brand.name,
   },
   openGraph: {
-    title: 'DealRadar — Find it cheaper. Find it closer.',
-    description: 'Compare local and online prices, availability, and distance in one search.',
+    title: `${brand.name} — ${brand.tagline}`,
+    description: brand.description,
     images: ['https://raw.githubusercontent.com/ryderearle-blip/DealRadar/main/public/og.png'],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DealRadar — Find it cheaper. Find it closer.',
-    description: 'Compare local and online prices, availability, and distance in one search.',
+    title: `${brand.name} — ${brand.tagline}`,
+    description: brand.description,
     images: ['https://raw.githubusercontent.com/ryderearle-blip/DealRadar/main/public/og.png'],
   },
 };

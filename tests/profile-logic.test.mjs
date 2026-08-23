@@ -17,6 +17,7 @@ test('profile settings fall back safely and retain valid preferences', () => {
     coordinates: [-81.38, 35.25], locationPrecision: 'device', searchRadius: 50, fulfillment: 'pickup',
     salesTaxPercent: 7.25, travelCostPerMile: 0.64,
     priceDropNotifications: false, backInStockNotifications: true,
+    usageAnalytics: true,
   }));
   assert.equal(parsed.name, 'Ryder Earle');
   assert.equal(parsed.searchRadius, 50);
@@ -24,6 +25,7 @@ test('profile settings fall back safely and retain valid preferences', () => {
   assert.equal(parsed.locationPrecision, 'device');
   assert.equal(parsed.salesTaxPercent, 7.25);
   assert.equal(parsed.travelCostPerMile, 0.64);
+  assert.equal(parsed.usageAnalytics, true);
   const bounded = parseProfilePreferences(JSON.stringify({ salesTaxPercent: 20, travelCostPerMile: -1 }));
   assert.equal(bounded.salesTaxPercent, defaultProfilePreferences.salesTaxPercent);
   assert.equal(bounded.travelCostPerMile, defaultProfilePreferences.travelCostPerMile);

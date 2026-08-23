@@ -1,7 +1,7 @@
 export function buildHealthPayload(bestBuyConfigured: boolean, checkedAt: string) {
   return {
     status: 'operational' as const,
-    service: 'DealRadar',
+    service: 'shopping-price-map',
     checkedAt,
     checks: {
       application: { status: 'ready' as const },

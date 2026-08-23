@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import { LegalSection, LegalShell } from '../legal-shell';
+import { brand } from '../brand';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — DealRadar',
-  description: 'How DealRadar handles location, shopping preferences, searches, and device-local data.',
+  title: `Privacy Policy — ${brand.name}`,
+  description: `How ${brand.name} handles location, shopping preferences, searches, and device-local data.`,
 };
 
 export default function PrivacyPolicy() {
@@ -12,9 +13,10 @@ export default function PrivacyPolicy() {
       <h2>Privacy at a glance</h2>
       <div><span>⌂<b>Saved locally</b><small>Profile, saved items, watches, and price history stay in your browser.</small></span><span>⌖<b>Location is optional</b><small>A ZIP code works; precise device location requires your permission.</small></span><span>♢<b>Not sold</b><small>DealRadar does not sell personal information or use it for targeted advertising.</small></span></div>
     </aside>
+    <aside className="legal-callout"><b>Counsel review required</b><p>This pre-launch draft uses the working brand name DealRadar. Replace [LEGAL OWNER NAME] and confirm the final business name, contact addresses, and applicable-law language before public launch.</p></aside>
 
     <LegalSection number="01" title="Scope">
-      <p>This Privacy Policy applies to the DealRadar website and mobile web experience at dealradar.biz. DealRadar is currently a private prototype for U.S. shopping searches. It does not currently provide user accounts, process payments, or run background notifications.</p>
+      <p>This Privacy Policy applies to the DealRadar website and mobile web experience at dealradar.biz, operated by [LEGAL OWNER NAME]. DealRadar is currently a private prototype for U.S. shopping searches. It does not currently provide user accounts, process payments, or run background notifications.</p>
     </LegalSection>
 
     <LegalSection number="02" title="Information DealRadar handles">
@@ -23,6 +25,7 @@ export default function PrivacyPolicy() {
         <div><b>Shopping activity</b><p>Searches, scanned barcode numbers, saved products and stores, price-watch settings, and observed price history.</p></div>
         <div><b>Requests needed to provide results</b><p>Product search terms, map area, retailer SKU, and ZIP code may be sent to DealRadar’s server when you search, move the map, or check store pickup.</p></div>
         <div><b>Basic technical information</b><p>Hosting and security providers may automatically process IP address, browser type, device type, timestamps, and request information to deliver and protect the service.</p></div>
+        <div><b>Optional usage analytics</b><p>If you enable anonymous usage analytics in Profile, DealRadar sends allow-listed feature names and counts. It does not send search text, precise location, saved-item names, or advertising identifiers.</p></div>
       </div>
     </LegalSection>
 
@@ -38,6 +41,7 @@ export default function PrivacyPolicy() {
         <li>Calculate planning estimates for tax, shipping, and round-trip travel.</li>
         <li>Save preferences, products, stores, watches, and observed price history on your device.</li>
         <li>Prevent abuse, diagnose failures, and protect the service.</li>
+        <li>Measure feature usage only when you opt in to anonymous analytics.</li>
         <li>Comply with law and enforce DealRadar’s Terms of Use.</li>
       </ul>
     </LegalSection>
@@ -53,6 +57,7 @@ export default function PrivacyPolicy() {
         <div><b>Approved retailer providers</b><p>A product query, retailer SKU, and ZIP code may be sent through DealRadar’s server to a connected official retailer service. DealRadar keeps retailer credentials on the server.</p></div>
         <div><b>Directions providers</b><p>Apple Maps or Google Maps receives location information only when you choose one of those direction links.</p></div>
         <div><b>Hosting and security providers</b><p>They process requests and basic technical data needed to host, secure, and operate DealRadar.</p></div>
+        <div><b>Diagnostics and analytics provider</b><p>DealRadar may send a minimal route and event category for a technical failure. If you opt in to analytics, it may also send allow-listed feature counts. Search text, saved-item details, and precise coordinates are excluded.</p></div>
       </div>
       <p>DealRadar may also disclose information when legally required, to protect users or the service, or as part of a future business transfer subject to appropriate notice.</p>
     </LegalSection>
@@ -67,6 +72,7 @@ export default function PrivacyPolicy() {
         <li>Use a ZIP-center location instead of precise device coordinates.</li>
         <li>Export or clear saved shopping activity from Profile → Privacy & shopping data.</li>
         <li>Change profile information in the Profile tab, or clear all DealRadar site data through your browser.</li>
+        <li>Keep anonymous usage analytics off, or turn it off at any time in Profile.</li>
         <li>Depending on where you live and which privacy laws apply, request access, correction, deletion, or information about DealRadar’s handling of personal information.</li>
       </ul>
       <p>Privacy requests may be sent to <a href="mailto:privacy@dealradar.biz">privacy@dealradar.biz</a>. DealRadar may need to verify a request and may retain information when required by law. DealRadar will not discriminate against someone for exercising an applicable privacy right.</p>
@@ -81,7 +87,7 @@ export default function PrivacyPolicy() {
     </LegalSection>
 
     <LegalSection number="11" title="Changes and contact">
-      <p>This policy may change as DealRadar adds accounts, background alerts, analytics, additional retailers, or other features. Material changes will receive an updated effective date and, when appropriate, an in-app notice.</p>
+      <p>This policy may change as DealRadar adds accounts, background alerts, additional retailers, or other features. Material changes will receive an updated effective date and, when appropriate, an in-app notice.</p>
       <p>Questions may be sent to <a href="mailto:privacy@dealradar.biz">privacy@dealradar.biz</a>. This planned mailbox must be activated before public launch.</p>
     </LegalSection>
   </LegalShell>;

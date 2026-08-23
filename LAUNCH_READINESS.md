@@ -10,7 +10,8 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 - [x] Server-only credential handling and live connection probe
 - [ ] Add and verify a production `BEST_BUY_API_KEY`
 - [ ] Obtain Amazon Associates and Creators API approval before implementing its connector
-- [ ] Confirm an eligible Walmart partner program and OAuth scope before implementing its connector
+- [ ] Obtain an approved Walmart affiliate data feed or written consumer-comparison API access before implementing its connector
+- [ ] Obtain eBay Buy API production approval and an eBay Partner Network campaign before implementing its connector
 - [ ] Review each retailer's display, attribution, caching, and deep-link terms before release
 - [ ] Keep Target, Apple, and Micro Center price-free unless an approved official feed becomes available
 
@@ -48,7 +49,11 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 - [x] Audit all locked dependencies in CI and apply baseline browser security headers
 - [x] Add baseline per-client request limits to upstream-backed API routes
 - [ ] Complete an external security review, secret rotation plan, and distributed abuse protection
-- [ ] Add error monitoring, availability checks, analytics consent, and retailer-feed health alerts
+- [x] Add privacy-safe analytics consent and minimal client error monitoring with optional collector forwarding
+- [x] Document backup-name preliminary screening for trademark counsel
+- [x] Make the visible wordmark and metadata configurable without redesigning the app
+- [ ] Configure the hosted observability collector and alert rules
+- [ ] Add external availability checks and retailer-feed health alerts
 - [x] Expose a non-cacheable, secret-free application health endpoint for staging monitors
 - [x] Add contained focus, Escape dismissal, and focus restoration to interactive sheets
 - [ ] Complete accessibility, iPhone Safari, Android Chrome, desktop, and slow-network testing

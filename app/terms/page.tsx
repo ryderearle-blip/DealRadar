@@ -1,17 +1,19 @@
 import type { Metadata } from 'next';
 import { LegalSection, LegalShell } from '../legal-shell';
+import { brand } from '../brand';
 
 export const metadata: Metadata = {
-  title: 'Terms of Use — DealRadar',
-  description: 'The rules and important limitations for using DealRadar.',
+  title: `Terms of Use — ${brand.name}`,
+  description: `The rules and important limitations for using ${brand.name}.`,
 };
 
 export default function TermsOfUse() {
   return <LegalShell active="terms" eyebrow="TERMS OF USE" title="The rules for using DealRadar." intro="These terms explain what DealRadar provides, what it does not promise, and how to use the service responsibly.">
     <aside className="legal-callout"><b>Important</b><p>DealRadar helps you plan a purchase. The retailer—not DealRadar—sets the final price, confirms inventory, processes the order, and handles returns or warranties.</p></aside>
+    <aside className="legal-callout"><b>Counsel review required</b><p>This pre-launch draft uses the working brand name DealRadar. Replace [LEGAL OWNER NAME] and [GOVERNING STATE] after the ownership structure and final name are confirmed.</p></aside>
 
     <LegalSection number="01" title="Agreement to these terms">
-      <p>By accessing or using DealRadar, you agree to these Terms of Use and the <a href="/privacy">Privacy Policy</a>. If you do not agree, do not use the service. DealRadar is currently offered as a private pre-launch prototype and may change before public release.</p>
+      <p>These terms are between you and [LEGAL OWNER NAME], the operator of DealRadar. By accessing or using DealRadar, you agree to these Terms of Use and the <a href="/privacy">Privacy Policy</a>. If you do not agree, do not use the service. DealRadar is currently offered as a private pre-launch prototype and may change before public release.</p>
     </LegalSection>
 
     <LegalSection number="02" title="Who may use DealRadar">
@@ -74,6 +76,7 @@ export default function TermsOfUse() {
 
     <LegalSection number="12" title="Changes, severability, and contact">
       <p>Updated terms will show a new effective date. Continued use after an update means you accept the revised terms where permitted by law. If part of these terms is unenforceable, the remaining terms continue to apply. These terms and the policies they reference form the agreement concerning DealRadar’s current service.</p>
+      <p>Subject to rights that cannot be waived, these terms will be governed by the laws of [GOVERNING STATE], without regard to conflict-of-law rules. Counsel must confirm the governing-law and dispute language before public launch.</p>
       <p>Questions may be sent to <a href="mailto:legal@dealradar.biz">legal@dealradar.biz</a>. This planned mailbox must be activated before public launch.</p>
     </LegalSection>
   </LegalShell>;

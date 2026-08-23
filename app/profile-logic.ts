@@ -12,6 +12,7 @@ export type ProfilePreferences = {
   travelCostPerMile: number;
   priceDropNotifications: boolean;
   backInStockNotifications: boolean;
+  usageAnalytics: boolean;
 };
 
 export const defaultProfilePreferences: ProfilePreferences = {
@@ -26,6 +27,7 @@ export const defaultProfilePreferences: ProfilePreferences = {
   travelCostPerMile: 0.70,
   priceDropNotifications: true,
   backInStockNotifications: true,
+  usageAnalytics: false,
 };
 
 const radii = new Set([5, 10, 25, 50, 100]);
@@ -62,6 +64,7 @@ export function parseProfilePreferences(raw: string | null): ProfilePreferences 
       travelCostPerMile: boundedNumber(parsed.travelCostPerMile, 0, 5, defaultProfilePreferences.travelCostPerMile),
       priceDropNotifications: typeof parsed.priceDropNotifications === 'boolean' ? parsed.priceDropNotifications : defaultProfilePreferences.priceDropNotifications,
       backInStockNotifications: typeof parsed.backInStockNotifications === 'boolean' ? parsed.backInStockNotifications : defaultProfilePreferences.backInStockNotifications,
+      usageAnalytics: typeof parsed.usageAnalytics === 'boolean' ? parsed.usageAnalytics : defaultProfilePreferences.usageAnalytics,
     };
   } catch {
     return defaultProfilePreferences;

@@ -1,14 +1,16 @@
 import type { Metadata } from 'next';
 import { LegalSection, LegalShell } from '../legal-shell';
+import { brand } from '../brand';
 
 export const metadata: Metadata = {
-  title: 'Affiliate Disclosure — DealRadar',
-  description: 'How retailer commissions and sponsored relationships are disclosed by DealRadar.',
+  title: `Affiliate Disclosure — ${brand.name}`,
+  description: `How retailer commissions and sponsored relationships are disclosed by ${brand.name}.`,
 };
 
 export default function AffiliateDisclosure() {
   return <LegalShell active="affiliate" eyebrow="AFFILIATE DISCLOSURE" title="How DealRadar may earn money." intro="DealRadar wants shoppers to know when a retailer relationship could financially benefit the service.">
     <aside className="legal-status"><span>Current status</span><b>DealRadar is not currently earning affiliate commissions.</b><p>The app is in private testing while official retailer access is being requested. This page will be updated whenever a compensated relationship becomes active.</p></aside>
+    <aside className="legal-callout"><b>Counsel review required</b><p>This pre-launch draft uses the working brand name DealRadar. Confirm the final operator name and each program-specific disclosure before activating paid links.</p></aside>
 
     <LegalSection number="01" title="What an affiliate link is">
       <p>Some links may eventually be affiliate or paid links. If you follow one and complete a qualifying purchase, the retailer may pay DealRadar a commission. The retailer controls the product price, checkout, fulfillment, returns, and whether a transaction qualifies.</p>
@@ -34,7 +36,7 @@ export default function AffiliateDisclosure() {
     </LegalSection>
 
     <LegalSection number="06" title="Active relationships and updates">
-      <p>No compensated retailer relationship is active as of the effective date above. Once approved, this section will list active programs and DealRadar will add the required nearby disclosures before earning commissions.</p>
+      <p>No compensated retailer relationship is active as of the effective date above. Applications or preparation may involve Best Buy, Amazon Associates, Walmart Affiliates, and the eBay Partner Network, but none should be described as active until approval and integration are complete. Once approved, this section will list active programs and DealRadar will add each program’s required nearby disclosure before earning commissions.</p>
       <p>Questions may be sent to <a href="mailto:partners@dealradar.biz">partners@dealradar.biz</a>. This planned mailbox must be activated before public launch.</p>
     </LegalSection>
   </LegalShell>;

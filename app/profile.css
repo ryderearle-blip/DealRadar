@@ -49,6 +49,7 @@
 .profile-toggles label > em::after { content: ''; position: absolute; left: 3px; top: 3px; width: 17px; height: 17px; border-radius: 50%; background: #fff; transition: .15s; }
 .profile-toggles input:checked + em { background: var(--green); }
 .profile-toggles input:checked + em::after { left: 20px; }
+.analytics-setting > label { border-bottom: 0; }
 .profile-privacy { width: 100%; display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: center; margin-top: 14px; border: 1px solid var(--line); border-radius: 18px; padding: 11px 12px; background: #fff; text-align: left; }
 .profile-privacy > i { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; background: #f1ecff; color: #7553b3; font-style: normal; }
 .profile-privacy span b,

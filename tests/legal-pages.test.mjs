@@ -5,10 +5,11 @@ import test from 'node:test';
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('legal routes disclose DealRadar current data practices and limits', async () => {
-  const [privacy, terms, affiliate, profile] = await Promise.all([
+  const [privacy, terms, affiliate, retailer, profile] = await Promise.all([
     read('app/privacy/page.tsx'),
     read('app/terms/page.tsx'),
     read('app/affiliate-disclosure/page.tsx'),
+    read('app/retailer-disclaimer/page.tsx'),
     read('app/page.tsx'),
   ]);
 
@@ -16,11 +17,18 @@ test('legal routes disclose DealRadar current data practices and limits', async 
   assert.match(privacy, /Camera frames are analyzed on your device/i);
   assert.match(privacy, /does not currently sell personal information/i);
   assert.match(privacy, /browser local storage/i);
+  assert.match(privacy, /anonymous usage analytics/i);
+  assert.match(privacy, /\[LEGAL OWNER NAME\]/);
   assert.match(terms, /retailer—not DealRadar—sets the final price/i);
   assert.match(terms, /planning estimates/i);
+  assert.match(terms, /\[GOVERNING STATE\]/);
   assert.match(affiliate, /not currently earning affiliate commissions/i);
   assert.match(affiliate, /will not turn an unverified offer into a verified one/i);
+  assert.match(affiliate, /eBay Partner Network/i);
+  assert.match(retailer, /Mapped stores are not price-connected stores/i);
+  assert.match(retailer, /not a reservation/i);
   assert.match(profile, /href="\/privacy"/);
   assert.match(profile, /href="\/terms"/);
   assert.match(profile, /href="\/affiliate-disclosure"/);
+  assert.match(profile, /href="\/retailer-disclaimer"/);
 });

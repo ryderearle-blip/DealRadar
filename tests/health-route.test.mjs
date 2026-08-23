@@ -7,7 +7,7 @@ test('health payload separates app readiness from optional retailer setup', () =
   const checkedAt = '2026-08-23T12:00:00.000Z';
   assert.deepEqual(buildHealthPayload(false, checkedAt), {
     status: 'operational',
-    service: 'DealRadar',
+    service: 'shopping-price-map',
     checkedAt,
     checks: {
       application: { status: 'ready' },

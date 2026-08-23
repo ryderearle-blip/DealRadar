@@ -10,7 +10,8 @@ DealRadar compares verified retailer prices with real U.S. store locations. The 
 | --- | --- | --- |
 | Best Buy | Connector implemented | Add `BEST_BUY_API_KEY` from the [Best Buy Developer Portal](https://developer.bestbuy.com/) |
 | Amazon | Partner access required | Approved Amazon Associates account and Creators API credentials |
-| Walmart | Partner access required | Approved Walmart Marketplace integration and OAuth credentials |
+| Walmart | Partner access required | Approved Walmart affiliate data feed or written consumer-comparison API access |
+| eBay | Partner access required | Approved eBay Buy API use plus eBay Partner Network campaign |
 | Target | Location only | No public consumer product-price API is documented |
 | Apple | Location only | Apple developer APIs do not expose Apple Store hardware pricing |
 | Micro Center | Location only | No public product and store-inventory API is documented |
@@ -72,6 +73,19 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Replayable product tour from Profile
 - Installable mobile-app manifest, iPhone safe-area support, and standalone display metadata
 - Accessible sheets with contained focus, Escape dismissal, and focus restoration
+
+## Analytics and error monitoring
+
+- Anonymous usage analytics are off by default and can be enabled in Profile
+- Analytics records only allow-listed feature events and never sends searches, ZIP codes, coordinates, names, prices, or retailer URLs
+- Minimal client error signals omit messages and stack traces to avoid capturing shopping data
+- Events are written to protected server logs by default and can be forwarded to an approved collector with `OBSERVABILITY_ENDPOINT` and `OBSERVABILITY_TOKEN`
+
+See [PARTNER_APPLICATIONS.md](./PARTNER_APPLICATIONS.md) for reusable retailer and affiliate application copy, approval sequences, and owner-only submission fields.
+
+See [BACKUP_NAME_SCREENING.md](./BACKUP_NAME_SCREENING.md) for the preliminary trademark/domain knockout search and counsel checklist.
+
+See [MOBILE_ACCESSIBILITY_TESTING.md](./MOBILE_ACCESSIBILITY_TESTING.md) for the current viewport/accessibility test matrix and the real-device checks still required before launch.
 
 See [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) for the remaining production requirements and current prototype limits.
 

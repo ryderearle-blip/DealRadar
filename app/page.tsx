@@ -11,6 +11,9 @@ import type { RetailerStatus } from './retailer-connections';
 import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, parseStoreLocations, sampleStoreLocations, storeCategoriesForProductQuery, storeCategoryLabel, storeSearchBounds, type OpenStreetMapElement, type StoreBounds, type StoreCategory, type StoreLocation } from './store-discovery';
 import { dialogWrapTarget, isDialogDismissKey } from './dialog-logic';
 import { inventoryDirectionsUrl, inventoryEvidence, type InventoryStore, type VerifiedInventoryCheck } from './inventory-logic';
+import { installClientErrorMonitoring, trackAnalytics } from './telemetry-client';
+import { brand } from './brand';
+import { BrandWordmark } from './brand-wordmark';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -365,6 +368,7 @@ export default function Home() {
   const [navCounts, setNavCounts] = useState<Record<Tab, number>>({ Search: 0, Map: 0, Saved: 0, Alerts: 0, Profile: 0 });
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 1800); };
   const retainInventoryCheck = useCallback((itemId: string, check: VerifiedInventoryCheck) => setInventoryChecks(current => ({ ...current, [itemId]: check })), []);
+  const analyticsStarted = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -384,6 +388,15 @@ export default function Home() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+  useEffect(() => installClientErrorMonitoring(), []);
+  useEffect(() => {
+    if (!preferences.usageAnalytics) return;
+    if (!analyticsStarted.current) {
+      analyticsStarted.current = true;
+      trackAnalytics(true, 'app_loaded', { source: 'web_app' });
+    }
+    trackAnalytics(true, 'tab_opened', { tab });
+  }, [preferences.usageAnalytics, tab]);
   useEffect(() => {
     const products = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'));
     const stores = parseSavedStores(window.localStorage.getItem('dealradar-saved-stores'));
@@ -406,14 +419,14 @@ export default function Home() {
     setOnboardingOpen(false);
     setQuery('');
     setTab('Search');
-    notify('DealRadar is ready');
+    notify(`${brand.name} is ready`);
   };
 
-  return <main className="stage"><section className="phone" aria-label="DealRadar prototype">
-    <div className="status"><b>9:41</b><i/><span>▮▮▮ ))) ▰</span></div>
+  return <main className="stage"><section className="phone" aria-label={`${brand.name} prototype`}>
+    <div className="status" aria-hidden={onboardingOpen}><b>9:41</b><i/><span>▮▮▮ ))) ▰</span></div>
     {!online && <div className="offline-banner" role="status">Offline · Saved items remain available</div>}
-    <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => setTab('Profile')}>● {preferences.locationLabel} {preferences.zipCode}⌄</button>}</div><button className="circle" onClick={() => tab === 'Profile' ? notify('Profile settings are saved on this device') : setTab('Map')} aria-label={tab === 'Profile' ? 'Profile settings status' : 'Open map'}>{tab === 'Profile' ? '⚙' : '➤'}</button></header>
-    <div className="content">
+    <header inert={onboardingOpen} aria-hidden={onboardingOpen}><div><h1><BrandWordmark/></h1>{tab !== 'Profile' && <button onClick={() => setTab('Profile')}>● {preferences.locationLabel} {preferences.zipCode}⌄</button>}</div><button className="circle" onClick={() => tab === 'Profile' ? notify('Profile settings are saved on this device') : setTab('Map')} aria-label={tab === 'Profile' ? 'Profile settings status' : 'Open map'}>{tab === 'Profile' ? '⚙' : '➤'}</button></header>
+    <div className="content" inert={onboardingOpen} aria-hidden={onboardingOpen}>
       {tab === 'Search' && <Search query={query} setQuery={setQuery} openMap={store => { if (store) setOffer(store); setTab('Map'); }} openConnections={() => setTab('Profile')} notify={notify} preferences={preferences} onCheckInventory={setInventoryItem} inventoryChecks={inventoryChecks}/>}
       {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify} preferences={preferences} onCheckInventory={setInventoryItem} inventoryChecks={inventoryChecks}/>}
       {tab === 'Saved' && <Saved
@@ -433,7 +446,7 @@ export default function Home() {
       />}
       {tab === 'Profile' && <Profile preferences={preferences} setPreferences={setPreferences} notify={notify} restartOnboarding={() => setOnboardingOpen(true)}/>}
     </div>
-    <nav>{tabs.map(item => <button key={item} aria-label={`Open ${item} tab${navCounts[item] ? `, ${navCounts[item]} items` : ''}`} aria-current={tab === item ? 'page' : undefined} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}><b aria-hidden="true">{icons[item]}</b>{item}{navCounts[item] > 0 && <em>{navCounts[item] > 99 ? '99+' : navCounts[item]}</em>}</button>)}</nav>
+    <nav inert={onboardingOpen} aria-hidden={onboardingOpen}>{tabs.map(item => <button key={item} aria-label={`Open ${item} tab${navCounts[item] ? `, ${navCounts[item]} items` : ''}`} aria-current={tab === item ? 'page' : undefined} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}><b aria-hidden="true">{icons[item]}</b>{item}{navCounts[item] > 0 && <em>{navCounts[item] > 99 ? '99+' : navCounts[item]}</em>}</button>)}</nav>
     {toast && <div className="toast">{toast}</div>}
     {onboardingOpen && <Onboarding
       preferences={preferences}
@@ -441,7 +454,7 @@ export default function Home() {
       onUseDefaults={() => finishOnboarding(defaultProfilePreferences)}
     />}
     {inventoryItem && <InventorySheet item={inventoryItem} zipCode={preferences.zipCode} onVerified={retainInventoryCheck} onClose={() => setInventoryItem(null)}/>}
-  </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Real U.S. stores • Verified price feeds only</small></aside></main>;
+  </section><aside><b>{brand.name}</b><span>Interactive mobile prototype</span><small>Real U.S. stores • Verified price feeds only</small></aside></main>;
 }
 
 function Onboarding({ preferences, onFinish, onUseDefaults }: { preferences: ProfilePreferences; onFinish: (preferences: ProfilePreferences) => void; onUseDefaults: () => void }) {
@@ -465,8 +478,8 @@ function Onboarding({ preferences, onFinish, onUseDefaults }: { preferences: Pro
   };
   const finish = () => onFinish({ ...preferences, ...resolvedLocation, searchRadius: radius, fulfillment });
 
-  return <section className="onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><div className="onboarding-progress"><span style={{ width: `${onboardingProgress(step)}%` }}/></div><div className="onboarding-brand">Deal<span>Radar</span><small>{step + 1} of 3</small></div>
-    {step === 0 && <div className="onboarding-step welcome"><div className="onboarding-radar" aria-hidden="true"><i/><i/><i/><b>⌖</b><span className="radar-store one">BEST<em>$</em></span><span className="radar-store two">◎<em>Store</em></span><span className="radar-store three">✦<em>Store</em></span></div><small>LOCAL + ONLINE PRICE DISCOVERY</small><h1 id="onboarding-title">Find it cheaper.<br/>Find it closer.</h1><p>DealRadar combines real U.S. store locations with official retailer price feeds so you can compare before you travel or order.</p><div className="onboarding-trust"><span>✓ Real mapped stores</span><span>✓ Verified prices only</span></div><button className="onboarding-primary" onClick={() => setStep(1)}>Set up DealRadar</button><button className="onboarding-secondary" onClick={onUseDefaults}>Use Kings Mountain defaults</button></div>}
+  return <section className="onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><div className="onboarding-progress"><span style={{ width: `${onboardingProgress(step)}%` }}/></div><div className="onboarding-brand"><BrandWordmark/><small>{step + 1} of 3</small></div>
+    {step === 0 && <div className="onboarding-step welcome"><div className="onboarding-radar" aria-hidden="true"><i/><i/><i/><b>⌖</b><span className="radar-store one">BEST<em>$</em></span><span className="radar-store two">◎<em>Store</em></span><span className="radar-store three">✦<em>Store</em></span></div><small>LOCAL + ONLINE PRICE DISCOVERY</small><h1 id="onboarding-title">Find it cheaper.<br/>Find it closer.</h1><p>{brand.name} combines real U.S. store locations with official retailer price feeds so you can compare before you travel or order.</p><div className="onboarding-trust"><span>✓ Real mapped stores</span><span>✓ Verified prices only</span></div><button className="onboarding-primary" onClick={() => setStep(1)}>Set up {brand.name}</button><button className="onboarding-secondary" onClick={onUseDefaults}>Use Kings Mountain defaults</button></div>}
     {step === 1 && <div className="onboarding-step setup"><button className="onboarding-back" onClick={() => setStep(0)}>‹ Back</button><small>PERSONALIZE LOCAL RESULTS</small><h1 id="onboarding-title">Where do you shop from?</h1><p>Your ZIP centers the map and estimates store distance. DealRadar does not need your street address.</p><label className="onboarding-zip"><span>Home ZIP code</span><input autoFocus inputMode="numeric" value={zip} onChange={event => { setZip(event.target.value.replace(/\D/g, '').slice(0, 5)); setLocationStatus('idle'); }} placeholder="28086"/></label>{locationStatus === 'error' && <div className="onboarding-error">Enter a valid U.S. ZIP code.</div>}<fieldset><legend>Shopping radius</legend><div className="onboarding-radius">{([5,10,25,50,100] as const).map(value => <button key={value} className={radius === value ? 'selected' : ''} onClick={() => setRadius(value)}>{value} mi</button>)}</div></fieldset><fieldset><legend>Start Search with</legend><div className="onboarding-fulfillment">{([{ value: 'both', label: 'Both' }, { value: 'pickup', label: 'Pickup' }, { value: 'shipping', label: 'Shipping' }] as const).map(option => <button key={option.value} className={fulfillment === option.value ? 'selected' : ''} onClick={() => setFulfillment(option.value)}>{fulfillment === option.value ? '✓ ' : ''}{option.label}</button>)}</div></fieldset><button className="onboarding-primary" disabled={zip.length !== 5 || locationStatus === 'loading'} onClick={continueFromLocation}>{locationStatus === 'loading' ? 'Finding your area…' : 'Continue'}</button></div>}
     {step === 2 && <div className="onboarding-step trust"><button className="onboarding-back" onClick={() => setStep(1)}>‹ Back</button><small>HONEST BY DESIGN</small><h1 id="onboarding-title">Know what’s verified.</h1><p>DealRadar clearly separates mapped locations from connected prices. If a retailer has no approved feed, the app shows “Price unavailable”—never a guess.</p><div className="onboarding-principles"><article><b>✓</b><span><strong>Official price feeds</strong><small>Prices include their retailer and match quality.</small></span></article><article><b>⌖</b><span><strong>Real U.S. locations</strong><small>Stores come from OpenStreetMap records.</small></span></article><article><b>♢</b><span><strong>Private by default</strong><small>Saved items and preferences stay on this device.</small></span></article></div><div className="onboarding-ready"><span>Home area</span><b>{resolvedLocation.locationLabel} {resolvedLocation.zipCode}</b><small>{radius} miles · {fulfillmentLabel(fulfillment)}</small></div><button className="onboarding-primary" onClick={finish}>Start finding deals</button></div>}
   </section>;
@@ -523,6 +536,7 @@ function Search({ query, setQuery, openMap, openConnections, notify, preferences
     if (!next) return;
     setQuery(next);
     setSuggestionsOpen(false);
+    trackAnalytics(preferences.usageAnalytics, 'search_submitted', { scope: filters.scope });
     setRecentSearches(current => {
       const updated = [next, ...current.filter(item => item.toLowerCase() !== next.toLowerCase())].slice(0, 6);
       window.localStorage.setItem('dealradar-recent-searches', JSON.stringify(updated));
@@ -565,6 +579,7 @@ function Search({ query, setQuery, openMap, openConnections, notify, preferences
   const beginFiltering = () => { setDraft(filters); setFiltersOpen(true); };
   const saveProduct = (item: LivePrice) => {
     const alreadySaved = savedProducts.some(saved => saved.id === item.id);
+    trackAnalytics(preferences.usageAnalytics, 'saved_item_changed', { source: 'search', enabled: !alreadySaved });
     const record: SavedProductRecord = {
       id: item.id,
       title: item.title,
@@ -1158,6 +1173,7 @@ function Map({ query, setQuery, offer, setOffer, notify, preferences, onCheckInv
     setDisplay('map');
   };
   const toggleSavedStore = () => {
+    trackAnalytics(preferences.usageAnalytics, 'saved_item_changed', { source: 'map', enabled: !selectedSaved });
     const record: SavedStoreRecord = {
       id: selectedStoreId,
       store: offer.store,
@@ -1339,6 +1355,7 @@ function Alerts({ notify, openSaved, shopProduct, preferences }: { notify: (mess
 
   const checkFeeds = async () => {
     if (!products.length || check.status === 'checking') return;
+    trackAnalytics(preferences.usageAnalytics, 'alert_check_started', { source: 'alerts', count: products.length });
     setCheck(current => ({ ...current, status: 'checking' }));
     try {
       const entries = await Promise.all(products.map(async product => {
@@ -1455,9 +1472,11 @@ function Profile({ preferences, setPreferences, notify, restartOnboarding }: { p
     <div className="profile-settings shopping-settings"><button onClick={() => setPanel('radius')}><i>⌾</i><span><b>Shopping radius</b><small>Default Search distance and Map quick filter</small></span><em>{preferences.searchRadius} mi ›</em></button><button onClick={() => setPanel('fulfillment')}><i>▣</i><span><b>Preferred fulfillment</b><small>Sets the starting Search filter</small></span><em>{fulfillmentLabel(preferences.fulfillment)} ›</em></button><button onClick={() => setPanel('costs')}><i>$</i><span><b>Cost assumptions</b><small>Tax and driving estimates for total cost</small></span><em>{preferences.salesTaxPercent.toFixed(2)}% · ${preferences.travelCostPerMile.toFixed(2)}/mi ›</em></button></div>
     <div className="profile-section-head"><h3>Notifications</h3><small>Device preferences</small></div>
     <div className="profile-settings profile-toggles"><label><i>♧</i><span><b>Price-drop alerts</b><small>Allow verified target alerts</small></span><input type="checkbox" checked={preferences.priceDropNotifications} onChange={event => update({ priceDropNotifications: event.target.checked }, event.target.checked ? 'Price-drop notifications enabled' : 'Price-drop notifications paused')}/><em/></label><label><i>▣</i><span><b>Back-in-stock alerts</b><small>Allow verified availability alerts</small></span><input type="checkbox" checked={preferences.backInStockNotifications} onChange={event => update({ backInStockNotifications: event.target.checked }, event.target.checked ? 'Back-in-stock notifications enabled' : 'Back-in-stock notifications paused')}/><em/></label></div>
+    <div className="profile-section-head"><h3>Privacy & diagnostics</h3><small>Optional analytics</small></div>
+    <div className="profile-settings profile-toggles analytics-setting"><label><i>◫</i><span><b>Anonymous usage analytics</b><small>Share feature counts, never searches or location</small></span><input type="checkbox" checked={preferences.usageAnalytics} onChange={event => update({ usageAnalytics: event.target.checked }, event.target.checked ? 'Anonymous analytics enabled' : 'Anonymous analytics disabled')}/><em/></label></div>
     <button className="profile-privacy" onClick={() => setPanel('privacy')}><i>♢</i><span><b>Privacy & shopping data</b><small>Export or clear device-local DealRadar data</small></span><em>›</em></button>
     <div className="profile-section-head"><h3>Legal & transparency</h3><small>Pre-launch policies</small></div>
-    <div className="profile-legal-links"><a href="/privacy"><i>♢</i><span><b>Privacy Policy</b><small>What DealRadar handles and why</small></span><em>›</em></a><a href="/terms"><i>§</i><span><b>Terms of Use</b><small>Service rules and important limits</small></span><em>›</em></a><a href="/affiliate-disclosure"><i>$</i><span><b>Affiliate Disclosure</b><small>How compensated retailer links will work</small></span><em>›</em></a></div>
+    <div className="profile-legal-links"><a href="/privacy"><i>♢</i><span><b>Privacy Policy</b><small>What DealRadar handles and why</small></span><em>›</em></a><a href="/terms"><i>§</i><span><b>Terms of Use</b><small>Service rules and important limits</small></span><em>›</em></a><a href="/affiliate-disclosure"><i>$</i><span><b>Affiliate Disclosure</b><small>How compensated retailer links will work</small></span><em>›</em></a><a href="/retailer-disclaimer"><i>!</i><span><b>Retailer & price disclaimer</b><small>Important limits on maps, prices, and inventory</small></span><em>›</em></a></div>
     <button className="profile-tour" onClick={restartOnboarding}>◎ <span><b>How DealRadar works</b><small>Replay the three-step welcome tour</small></span><em>›</em></button>
     <p className="profile-device-note">Your profile, saved items, watches, and observed price history stay in this browser for the current prototype.</p>
     {panel === 'name' && <NameProfileSheet

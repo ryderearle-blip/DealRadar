@@ -112,7 +112,7 @@
   font-size: 7px;
 }
 
-.map-data-attribution a { color: inherit; text-decoration: none; }
+.map-data-attribution a { min-height: 24px; display: inline-flex; align-items: center; padding: 5px 2px; color: inherit; text-decoration: none; }
 .map-data-attribution a:hover,
 .map-data-attribution a:focus-visible { color: var(--blue); text-decoration: underline; }
 .map-data-attribution.list-attribution { position: static; width: max-content; max-width: 100%; margin: 14px auto 0; transform: none; background: transparent; box-shadow: none; }
@@ -223,6 +223,7 @@
 .maplibregl-ctrl-scale { border-color: #445364 !important; background: #ffffffbf !important; color: #2c3948 !important; font-size: 9px !important; }
 .maplibregl-ctrl-attrib { font-size: 9px !important; }
 .sheet-head > div > small { display: block; margin-bottom: 2px; color: var(--green); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.sheet-head > button { width: 44px; height: 44px; }
 .sheet-head > button.saved { color: #e2233c; }
 .deal .address { margin-top: 2px; color: #7a8795; font-size: 10px; }
 .store-source { margin-left: 6px; border-left: 1px solid #9ed6b5; padding-left: 6px; color: inherit; font-style: normal; text-decoration: none; }
