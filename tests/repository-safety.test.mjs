@@ -24,3 +24,9 @@ test('the browser uses the controlled store endpoint before its continuity fallb
   assert.match(storeRoute, /overpass\.private\.coffee\/api\/interpreter/);
   assert.match(storeRoute, /overpass-api\.de\/api\/interpreter/);
 });
+
+test('the application proxy applies the centralized browser security policy', async () => {
+  const proxySource = await readFile(new URL('../proxy.ts', import.meta.url), 'utf8');
+  assert.match(proxySource, /applySecurityHeaders\(response\.headers/);
+  assert.match(proxySource, /NextResponse\.next\(\)/);
+});

@@ -78,3 +78,5 @@ Every push and pull request runs the same staging gate: unit and contract tests,
 Store discovery is served through `/api/stores`. The endpoint accepts a small U.S. map bounding box, validates and normalizes it, queries OpenStreetMap, removes nearby duplicate records, and returns a cacheable location-only response. It intentionally does not invent store prices or inventory.
 
 Private staging monitors can call `/api/health` for a non-cacheable, secret-free readiness response. Optional retailer setup is reported separately from application availability, so a missing retailer key never masquerades as an app outage.
+
+The release gate audits all locked application and build dependencies for high-severity advisories. Browser responses receive framing, content-type, referrer, permissions, transport, and content-security protections while retaining the map, ZIP lookup, barcode camera, and official image sources DealRadar needs.
