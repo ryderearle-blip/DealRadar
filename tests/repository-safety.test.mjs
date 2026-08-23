@@ -52,3 +52,11 @@ test('wide map and list views retain real discovery and visible attribution', as
   assert.match(clientPage, /new maplibregl\.AttributionControl/);
   assert.match(clientPage, /<MapDataAttribution list\/>/);
 });
+
+test('search planning distances come from nearby mapped stores instead of the starter store list', async () => {
+  const clientPage = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  assert.match(clientPage, /useNearbySearchStores\(preferences\.coordinates, localSearchRadius/);
+  assert.match(clientPage, /nearestRetailerDistance\(retailer, preferences\.coordinates, mappedSearchStores\)/);
+  assert.match(clientPage, /mapped store planning/);
+  assert.doesNotMatch(clientPage, /function nearestRetailerDistance\(/);
+});

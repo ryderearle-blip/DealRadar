@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, formatVerificationFreshness, normalizeBarcode, toggleComparison, updatePriceHistory } from './search-logic';
-import { appleMapsDirectionsUrl, filterMappedStores, googleMapsDirectionsUrl, milesBetween, retailerMatchesStore, storeDistanceLabel, type MapStoreFilters } from './map-logic';
+import { appleMapsDirectionsUrl, filterMappedStores, googleMapsDirectionsUrl, milesBetween, nearestRetailerDistance, retailerMatchesStore, storeDistanceLabel, type MapStoreFilters } from './map-logic';
 import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedStores, toggleSavedProduct, toggleSavedStore as toggleSavedStoreRecord, type SavedProductRecord, type SavedSort, type SavedStoreRecord } from './saved-logic';
 import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch, parsePriceWatchSettings, setPriceWatchSetting, type PriceWatchSetting } from './alert-logic';
 import { defaultProfilePreferences, deviceShoppingLocation, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences, type ShoppingLocation } from './profile-logic';
 import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './onboarding-logic';
 import type { RetailerStatus } from './retailer-connections';
-import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, parseStoreLocations, sampleStoreLocations, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
+import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, parseStoreLocations, sampleStoreLocations, storeSearchBounds, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
 import { dialogWrapTarget, isDialogDismissKey } from './dialog-logic';
 import { inventoryDirectionsUrl, inventoryEvidence, type InventoryStore, type VerifiedInventoryCheck } from './inventory-logic';
 
@@ -59,6 +59,11 @@ type PriceSearch = {
   status: 'idle' | 'loading' | 'ready' | 'error';
   offers: LivePrice[];
   retailers: RetailerConnection[];
+};
+
+type NearbyStoreSearch = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  stores: StoreLocation[];
 };
 
 type SearchFilters = {
@@ -123,7 +128,6 @@ const offers: Offer[] = [
   { store: 'Target Concord', price: null, distance: '55.2 mi', color: '#d92332', mark: '◎', detail: 'No public price API', address: '6150 Bayfield Pkwy', coordinates: [-80.6792366, 35.4170115], mapTier: 3 },
 ];
 
-const HOME: [number, number] = defaultProfilePreferences.coordinates;
 const MAPLIBRE_VERSION = '5.24.0';
 type MapBounds = { contains: (coordinates: [number, number]) => boolean; getSouth: () => number; getWest: () => number; getNorth: () => number; getEast: () => number };
 type MapLibreMap = {
@@ -257,17 +261,48 @@ function useVerifiedPriceSearch(query: string): PriceSearch {
   return prices;
 }
 
-function nearestRetailerDistance(retailer: string, home: [number, number] = HOME) {
-  const normalized = retailer.toLowerCase();
-  const matchingStores = offers.filter(item => item.coordinates && item.store.toLowerCase().includes(normalized));
-  if (!matchingStores.length) return null;
-  return Math.min(...matchingStores.map(item => milesBetween(home, item.coordinates!)));
+function useNearbySearchStores(home: [number, number], radiusMiles: number, enabled: boolean): NearbyStoreSearch {
+  const [result, setResult] = useState<NearbyStoreSearch>({ status: 'idle', stores: [] });
+
+  useEffect(() => {
+    if (!enabled) {
+      const idleTimer = window.setTimeout(() => setResult({ status: 'idle', stores: [] }), 0);
+      return () => window.clearTimeout(idleTimer);
+    }
+    const bounds = storeSearchBounds(home, radiusMiles);
+    if (!bounds) {
+      const errorTimer = window.setTimeout(() => setResult({ status: 'error', stores: [] }), 0);
+      return () => window.clearTimeout(errorTimer);
+    }
+
+    const controller = new AbortController();
+    const parameters = new URLSearchParams({
+      s: String(bounds.south),
+      w: String(bounds.west),
+      n: String(bounds.north),
+      e: String(bounds.east),
+    });
+    const loadingTimer = window.setTimeout(() => setResult({ status: 'loading', stores: [] }), 0);
+    fetch(`/api/stores?${parameters}`, { signal: controller.signal })
+      .then(async response => {
+        const data = await response.json() as { stores?: StoreLocation[] };
+        if (!response.ok) throw new Error('Nearby stores could not be loaded');
+        setResult({ status: 'ready', stores: data.stores ?? [] });
+      })
+      .catch(error => {
+        if ((error as Error).name !== 'AbortError') setResult({ status: 'error', stores: [] });
+      });
+    return () => {
+      window.clearTimeout(loadingTimer);
+      controller.abort();
+    };
+  }, [enabled, home, radiusMiles]);
+
+  return result;
 }
 
-function costForOffer(item: LivePrice, scope: SearchFilters['scope'], preferences: Pick<ProfilePreferences, 'coordinates' | 'salesTaxPercent' | 'travelCostPerMile'> = defaultProfilePreferences, verifiedPickupDistance?: number | null): CostBreakdown {
-  const home = preferences.coordinates;
-  const distance = verifiedPickupDistance === undefined ? nearestRetailerDistance(item.retailer, home) : verifiedPickupDistance;
-  return calculateEstimatedTotalCost(item, scope, distance, preferences.salesTaxPercent / 100, preferences.travelCostPerMile);
+function costForOffer(item: LivePrice, scope: SearchFilters['scope'], preferences: Pick<ProfilePreferences, 'salesTaxPercent' | 'travelCostPerMile'> = defaultProfilePreferences, pickupDistance: number | null = null): CostBreakdown {
+  return calculateEstimatedTotalCost(item, scope, pickupDistance, preferences.salesTaxPercent / 100, preferences.travelCostPerMile);
 }
 
 function recordVerifiedPriceHistory(items: LivePrice[]) {
@@ -422,6 +457,9 @@ function Search({ query, setQuery, open, openConnections, notify, preferences, o
   const [historyItem, setHistoryItem] = useState<LivePrice | null>(null);
   const [savedProducts, setSavedProducts] = useState<SavedProductRecord[]>([]);
   const isSearching = String(query).trim().length >= 2;
+  const localSearchRadius = filters.maxDistance ?? preferences.searchRadius;
+  const nearbyStoreSearch = useNearbySearchStores(preferences.coordinates, localSearchRadius, isSearching && filters.scope !== 'online');
+  const mappedSearchStores = useMemo(() => nearbyStoreSearch.stores.map(store => ({ store: store.name, coordinates: store.coordinates })), [nearbyStoreSearch.stores]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -473,18 +511,15 @@ function Search({ query, setQuery, open, openConnections, notify, preferences, o
       if (evidence.state === 'available') return evidence.distance;
       if (evidence.state === 'unavailable') return null;
     }
-    return nearestRetailerDistance(retailer, preferences.coordinates);
-  }, [pickupEvidenceFor, preferences.coordinates]);
+    return nearestRetailerDistance(retailer, preferences.coordinates, mappedSearchStores);
+  }, [mappedSearchStores, pickupEvidenceFor, preferences.coordinates]);
 
   const filteredOffers = useMemo(() => filterAndSortOffers(
     priceSearch.offers,
     filters,
     distanceForOffer,
-    item => {
-      const evidence = pickupEvidenceFor(item);
-      return costForOffer(item, filters.scope, preferences, evidence.state === 'available' ? evidence.distance : evidence.state === 'unavailable' ? null : undefined);
-    },
-  ), [distanceForOffer, filters, pickupEvidenceFor, preferences, priceSearch.offers]);
+    item => costForOffer(item, filters.scope, preferences, distanceForOffer(item.retailer, item)),
+  ), [distanceForOffer, filters, preferences, priceSearch.offers]);
   const comparedOffers = compareIds.flatMap(id => priceSearch.offers.find(item => item.id === id) ?? []);
 
   const appliedCount = [
@@ -529,16 +564,19 @@ function Search({ query, setQuery, open, openConnections, notify, preferences, o
       </div>
       <div className="search-result-heading"><div><small>{filters.scope.toUpperCase()} · VERIFIED RETAILER RESULTS</small><h2>{priceSearch.status === 'loading' ? 'Searching…' : `${filteredOffers.length} results`}</h2></div><button onClick={beginFiltering}>{filters.sort === 'best' ? 'Best match' : filters.sort === 'price-low' ? 'Lowest price' : filters.sort === 'price-high' ? 'Highest price' : filters.sort === 'total-cost' ? 'Total cost' : 'Nearest'}⌄</button></div>
       {priceSearch.status === 'ready' && priceSearch.offers.length > 0 && <p className="search-cost-note">Planning totals use your Profile assumptions: {preferences.salesTaxPercent.toFixed(2)}% tax · ${preferences.travelCostPerMile.toFixed(2)}/mi round trip.</p>}
+      {priceSearch.status === 'ready' && priceSearch.offers.length > 0 && filters.scope !== 'online' && <div className={`search-location-evidence ${nearbyStoreSearch.status}`}><i>{nearbyStoreSearch.status === 'loading' ? '◌' : nearbyStoreSearch.status === 'ready' ? '⌖' : '!'}</i><span><b>{nearbyStoreSearch.status === 'loading' ? `Finding real stores near ${preferences.locationLabel}…` : nearbyStoreSearch.status === 'ready' ? `${nearbyStoreSearch.stores.length} real mapped stores checked` : 'Nearby map data unavailable'}</b><small>{nearbyStoreSearch.status === 'ready' ? `Planning distances use mapped stores within ${localSearchRadius} miles; run Check pickup for live stock.` : nearbyStoreSearch.status === 'error' ? 'Local distance stays hidden until a mapped store or official pickup check is available.' : 'Local results will update when nearby stores load.'}</small></span></div>}
       {priceSearch.status === 'loading' && <div className="search-loading"><span/><b>Checking official price feeds</b><small>Prices are never estimated.</small></div>}
       {priceSearch.status === 'error' && <div className="search-no-results"><b>Search is temporarily unavailable</b><span>Try again in a moment.</span></div>}
       {priceSearch.status === 'ready' && filteredOffers.length > 0 && <div className="search-results">{filteredOffers.map(item => {
         const pickupEvidence = pickupEvidenceFor(item);
         const distance = distanceForOffer(item.retailer, item);
-        const cost = costForOffer(item, filters.scope, preferences, pickupEvidence.state === 'available' ? pickupEvidence.distance : pickupEvidence.state === 'unavailable' ? null : undefined);
+        const cost = costForOffer(item, filters.scope, preferences, distance);
         const freshness = formatVerificationFreshness(item.updatedAt);
         const selected = compareIds.includes(item.id);
         const saved = savedProducts.some(savedItem => savedItem.id === item.id);
-        return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {pickupEvidence.state === 'unavailable' ? 'Online · no pickup stock' : distance === null ? 'Online' : `${distance.toFixed(1)} mi${pickupEvidence.state === 'available' ? ' verified pickup' : ''}`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b className={freshness.stale ? 'verification-stale' : 'verification-fresh'}>{freshness.label}</b>{pickupEvidence.state !== 'unverified' && <b className={pickupEvidence.state === 'available' ? 'inventory-available' : 'inventory-unavailable'}>{pickupEvidence.state === 'available' ? `✓ ${pickupEvidence.storeCount} in-stock ${pickupEvidence.storeCount === 1 ? 'store' : 'stores'}` : 'No nearby pickup stock'}</b>}</div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial $${cost.total.toFixed(2)} + shipping`}<span>{cost.method === 'Local pickup' ? pickupEvidence.state === 'available' ? 'Verified pickup distance' : 'Pickup planning · verify store' : cost.method}</span></em>{item.fulfillment.some(option => option.toLowerCase().includes('pickup')) && <button className="pickup-check" onClick={() => onCheckInventory(item)}>{pickupEvidence.state === 'available' ? `✓ ${pickupEvidence.storeCount} pickup ${pickupEvidence.storeCount === 1 ? 'store' : 'stores'}` : pickupEvidence.state === 'unavailable' ? '↻ Recheck pickup' : '⌖ Check pickup'}</button>}<button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
+        const ships = item.fulfillment.some(option => option.toLowerCase().includes('shipping'));
+        const proximity = pickupEvidence.state === 'unavailable' ? 'Online · no pickup stock' : distance === null ? ships ? 'Online · local distance unavailable' : 'Local distance unavailable' : `${distance.toFixed(1)} mi · ${pickupEvidence.state === 'available' ? `retailer pickup near ${preferences.zipCode}` : 'mapped store planning'}`;
+        return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {proximity}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b className={freshness.stale ? 'verification-stale' : 'verification-fresh'}>{freshness.label}</b>{pickupEvidence.state !== 'unverified' && <b className={pickupEvidence.state === 'available' ? 'inventory-available' : 'inventory-unavailable'}>{pickupEvidence.state === 'available' ? `✓ ${pickupEvidence.storeCount} in-stock ${pickupEvidence.storeCount === 1 ? 'store' : 'stores'}` : 'No nearby pickup stock'}</b>}</div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial $${cost.total.toFixed(2)} + shipping`}<span>{cost.method === 'Local pickup' ? pickupEvidence.state === 'available' ? `Retailer distance from ZIP ${preferences.zipCode}` : 'Mapped-store planning · verify pickup' : cost.method}</span></em>{item.fulfillment.some(option => option.toLowerCase().includes('pickup')) && <button className="pickup-check" onClick={() => onCheckInventory(item)}>{pickupEvidence.state === 'available' ? `✓ ${pickupEvidence.storeCount} pickup ${pickupEvidence.storeCount === 1 ? 'store' : 'stores'}` : pickupEvidence.state === 'unavailable' ? '↻ Recheck pickup' : '⌖ Check pickup'}</button>}<button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
       })}</div>}
       {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(defaultFilters)}>Reset filters</button>}{!priceSearch.offers.length && <button onClick={openConnections}>View retailer status</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
     </>}
@@ -559,6 +597,7 @@ function Search({ query, setQuery, open, openConnections, notify, preferences, o
       scope={filters.scope}
       preferences={preferences}
       inventoryChecks={inventoryChecks}
+      mappedStores={mappedSearchStores}
       onClose={() => setCompareOpen(false)}
     />}
     {historyItem && <PriceHistorySheet
@@ -634,12 +673,12 @@ function BarcodeScanner({ onClose, onFound }: { onClose: () => void; onFound: (c
   return <div className="filter-backdrop scanner-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="barcode-sheet" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div className="filter-sheet-head"><div><small>EXACT PRODUCT SEARCH</small><h2 id="scanner-title">Scan barcode</h2></div><button onClick={onClose} aria-label="Close barcode scanner">×</button></div><div className="camera-view"><video ref={videoRef} muted playsInline/><span/><b>UPC / EAN</b></div><p role="status" aria-live="polite">{status}</p><form onSubmit={submit}><label><span>Enter barcode manually</span><input inputMode="numeric" autoComplete="off" value={manualCode} onChange={event => setManualCode(event.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="8–14 digit code"/></label><button type="submit">Search exact product</button></form><small className="privacy-note">Camera video stays on this device and is never uploaded.</small></section></div>;
 }
 
-function CompareSheet({ items, scope, preferences, inventoryChecks, onClose }: { items: LivePrice[]; scope: SearchFilters['scope']; preferences: ProfilePreferences; inventoryChecks: Record<string, VerifiedInventoryCheck>; onClose: () => void }) {
+function CompareSheet({ items, scope, preferences, inventoryChecks, mappedStores, onClose }: { items: LivePrice[]; scope: SearchFilters['scope']; preferences: ProfilePreferences; inventoryChecks: Record<string, VerifiedInventoryCheck>; mappedStores: Array<{ store: string; coordinates: [number, number] }>; onClose: () => void }) {
   const dialog = useAccessibleDialog(onClose);
   return <div className="filter-backdrop compare-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="compare-sheet" role="dialog" aria-modal="true" aria-labelledby="compare-title"><div className="filter-sheet-head"><div><small>SIDE-BY-SIDE</small><h2 id="compare-title">Compare {items.length} deals</h2></div><button onClick={onClose} aria-label="Close comparison">×</button></div><div className="compare-grid">{items.map(item => {
     const pickupEvidence = inventoryEvidence(inventoryChecks[item.id], item.sku, preferences.zipCode);
-    const distance = pickupEvidence.state === 'available' ? pickupEvidence.distance : pickupEvidence.state === 'unavailable' ? null : nearestRetailerDistance(item.retailer, preferences.coordinates);
-    const cost = costForOffer(item, scope, preferences, pickupEvidence.state === 'available' ? pickupEvidence.distance : pickupEvidence.state === 'unavailable' ? null : undefined);
+    const distance = pickupEvidence.state === 'available' ? pickupEvidence.distance : pickupEvidence.state === 'unavailable' ? null : nearestRetailerDistance(item.retailer, preferences.coordinates, mappedStores);
+    const cost = costForOffer(item, scope, preferences, distance);
     const freshness = formatVerificationFreshness(item.updatedAt);
     return <article key={item.id}><div className="compare-brand">{item.retailer}</div><h3>{item.title}</h3><dl><div><dt>Item price</dt><dd>${item.price.toFixed(2)}</dd></div><div className="total"><dt>{cost.complete ? 'Estimated total' : 'Partial total'}</dt><dd>${cost.total.toFixed(2)}{!cost.complete && ' + shipping'}</dd></div><div><dt>Price verified</dt><dd className={freshness.stale ? 'stale-copy' : ''}>{freshness.label.replace(/^Verified /, '')}</dd></div><div><dt>Pickup inventory</dt><dd className={pickupEvidence.state === 'available' ? 'confirmed-copy' : pickupEvidence.state === 'unavailable' ? 'stale-copy' : ''}>{pickupEvidence.state === 'available' ? `${pickupEvidence.storeCount} in-stock ${pickupEvidence.storeCount === 1 ? 'store' : 'stores'}` : pickupEvidence.state === 'unavailable' ? 'None near ZIP' : 'Not checked'}</dd></div><div><dt>Tax estimate</dt><dd>${cost.tax.toFixed(2)}</dd></div><div><dt>Shipping</dt><dd>{cost.shipping === null ? 'Not provided' : cost.shipping === 0 ? 'Free' : `$${cost.shipping.toFixed(2)}`}</dd></div><div><dt>Round-trip travel</dt><dd>{cost.travel === null ? 'Not applicable' : `$${cost.travel.toFixed(2)}`}</dd></div><div><dt>Distance</dt><dd>{distance === null ? 'Online' : `${distance.toFixed(1)} mi${pickupEvidence.state === 'available' ? ' verified' : ' planning'}`}</dd></div><div><dt>Availability</dt><dd>{item.availability}</dd></div><div><dt>Fulfillment</dt><dd>{item.fulfillment.join(' / ') || 'Not provided'}</dd></div><div><dt>Model match</dt><dd>{item.matchType}</dd></div><div><dt>Returns</dt><dd><a href={item.productUrl} target="_blank" rel="noreferrer">See retailer policy</a></dd></div></dl></article>;
   })}</div><p className="cost-disclaimer">Totals use verified item prices, official shipping when supplied, your {preferences.salesTaxPercent.toFixed(2)}% tax assumption, and ${preferences.travelCostPerMile.toFixed(2)} per round-trip mile. Pickup totals use the nearest mapped retailer for planning; run Check pickup to verify an in-stock store. Confirm final tax and shipping at checkout.</p></section></div>;

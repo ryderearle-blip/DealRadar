@@ -27,6 +27,20 @@ const USA_LIMITS = { south: 18, west: -171, north: 72, east: -66 } as const;
 const MAX_LATITUDE_SPAN = 5;
 const MAX_LONGITUDE_SPAN = 8;
 
+export function storeSearchBounds(home: [number, number], radiusMiles: number): StoreBounds | null {
+  const [longitude, latitude] = home;
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)
+    || longitude < USA_LIMITS.west || longitude > USA_LIMITS.east
+    || latitude < USA_LIMITS.south || latitude > USA_LIMITS.north
+    || !Number.isFinite(radiusMiles) || radiusMiles <= 0) return null;
+
+  const boundedRadius = Math.min(100, radiusMiles);
+  const latitudeRadius = Math.min(MAX_LATITUDE_SPAN / 2, boundedRadius / 69);
+  const longitudeMilesPerDegree = 69 * Math.max(.25, Math.cos(latitude * Math.PI / 180));
+  const longitudeRadius = Math.min(MAX_LONGITUDE_SPAN / 2, boundedRadius / longitudeMilesPerDegree);
+  return boundedWindow(latitude, longitude, latitudeRadius * 2, longitudeRadius * 2);
+}
+
 function boundedWindow(centerLatitude: number, centerLongitude: number, latitudeSpan: number, longitudeSpan: number): StoreBounds {
   let south = centerLatitude - latitudeSpan / 2;
   let north = centerLatitude + latitudeSpan / 2;

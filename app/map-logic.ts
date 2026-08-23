@@ -36,6 +36,12 @@ export function retailerMatchesStore(retailer: string, store: string) {
   return storeName.includes(retailerName) || retailerName.includes(storeName.replace(/(shelby|belmont|lincolnton|hickory|spartanburg|rockhill|concord|southpark)$/g, ''));
 }
 
+export function nearestRetailerDistance<T extends { store: string; coordinates?: [number, number] }>(retailer: string, home: [number, number], stores: T[]) {
+  const matchingStores = stores.filter(store => store.coordinates && retailerMatchesStore(retailer, store.store));
+  if (!matchingStores.length) return null;
+  return Math.min(...matchingStores.map(store => milesBetween(home, store.coordinates!)));
+}
+
 export function filterMappedStores<T extends FilterableMapStore>(stores: T[], filters: MapStoreFilters, verifiedRetailers: string[], distanceFor: (store: T) => number | null) {
   return stores.filter(store => {
     if (filters.verifiedOnly && !verifiedRetailers.some(retailer => retailerMatchesStore(retailer, store.store))) return false;

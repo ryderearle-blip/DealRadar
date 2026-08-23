@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, normalizeStoreBounds, parseStoreLocations, sampleStoreLocations, storeBoundsKey } from '../app/store-discovery.ts';
+import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, normalizeStoreBounds, parseStoreLocations, sampleStoreLocations, storeBoundsKey, storeSearchBounds } from '../app/store-discovery.ts';
 
 const bounds = { south: 35, west: -81.5, north: 35.5, east: -80.8 };
 
@@ -52,6 +52,19 @@ test('uses one detailed window nearby and bounded representative windows nationw
   assert.equal(regional.length, 4);
   assert.equal(new Set(regional.map(window => (window.south + window.north) / 2)).size, 2);
   assert.equal(new Set(regional.map(window => (window.west + window.east) / 2)).size, 2);
+});
+
+test('builds a bounded store-search area around a U.S. shopping origin', () => {
+  const nearby = storeSearchBounds([-81.3806, 35.2516], 25);
+  assert.ok(nearby);
+  assert.ok(nearby.south < 35.2516 && nearby.north > 35.2516);
+  assert.ok(nearby.west < -81.3806 && nearby.east > -81.3806);
+  assert.ok(nearby.north - nearby.south < 1);
+  const alaska = storeSearchBounds([-149.9, 61.2], 100);
+  assert.ok(alaska.north - alaska.south <= 5);
+  assert.ok(alaska.east - alaska.west <= 8);
+  assert.equal(storeSearchBounds([2.35, 48.86], 25), null);
+  assert.equal(storeSearchBounds([-81.38, 35.25], 0), null);
 });
 
 test('samples a wide view with retailer variety before repeated brands', () => {

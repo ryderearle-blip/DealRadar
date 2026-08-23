@@ -50,6 +50,15 @@
 .search-result-heading h2 { margin: 2px 0 0; font-size: 25px; }
 .search-result-heading > button { border: 0; background: none; padding: 5px 0; color: var(--blue); font-size: 11px; font-weight: 750; }
 .search-cost-note { margin: -5px 0 10px; border-left: 2px solid var(--green); padding-left: 8px; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.search-location-evidence { display: grid; grid-template-columns: 29px minmax(0,1fr); gap: 9px; align-items: center; margin: 0 0 10px; border: 1px solid #cfe0ef; border-radius: 15px; padding: 8px 10px; background: #f3f8ff; }
+.search-location-evidence > i { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 50%; background: var(--blue); color: #fff; font-size: 13px; font-style: normal; font-weight: 900; }
+.search-location-evidence span b,
+.search-location-evidence span small { display: block; }
+.search-location-evidence span b { color: #304358; font-size: 9px; }
+.search-location-evidence span small { margin-top: 2px; color: var(--muted); font-size: 8px; line-height: 1.35; }
+.search-location-evidence.loading > i { animation: map-spin .85s linear infinite; }
+.search-location-evidence.error { border-color: #ecd0c9; background: #fff7f4; }
+.search-location-evidence.error > i { background: #a0493e; }
 
 .search-loading,
 .search-no-results {
