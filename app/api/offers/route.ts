@@ -4,6 +4,7 @@ import { enforceRequestLimit } from '../request-limit.ts';
 
 type LiveOffer = {
   id: string;
+  sku: string;
   retailer: string;
   title: string;
   price: number;
@@ -92,6 +93,7 @@ async function searchBestBuy(query: string): Promise<LiveOffer[]> {
 
       return [{
         id: `bestbuy-${product.sku}`,
+        sku: String(product.sku),
         retailer: 'Best Buy',
         title: product.name,
         price: Number(product.salePrice),

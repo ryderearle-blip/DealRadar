@@ -291,6 +291,7 @@
 .live-prices article .map-price-freshness { color: var(--blue); font-weight: 750; }
 .live-prices article strong { color: var(--green); font-size: 14px; text-align: right; }
 .live-prices article a { display: block; margin-top: 3px; color: var(--blue); font-size: 9px; text-decoration: none; }
+.live-prices article strong button { display: block; margin: 5px 0 0 auto; border: 0; padding: 0; background: none; color: var(--green); font-size: 8px; font-weight: 800; }
 
 .saved-list article strong { font-size: 12px; color: #435064; }
 .feed-waiting > strong { color: #435064; }

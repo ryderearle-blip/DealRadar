@@ -10,6 +10,7 @@ import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './
 import type { RetailerStatus } from './retailer-connections';
 import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, parseStoreLocations, sampleStoreLocations, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
 import { dialogWrapTarget, isDialogDismissKey } from './dialog-logic';
+import { inventoryDirectionsUrl, type InventoryStore } from './inventory-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -30,6 +31,7 @@ type Offer = {
 
 type LivePrice = {
   id: string;
+  sku: string;
   retailer: string;
   title: string;
   price: number;
@@ -291,6 +293,7 @@ export default function Home() {
   const [savedQuery, setSavedQuery] = useState('');
   const [offer, setOffer] = useState(offers[0]);
   const [toast, setToast] = useState('');
+  const [inventoryItem, setInventoryItem] = useState<LivePrice | null>(null);
   const [preferences, setPreferencesState] = useState<ProfilePreferences>(defaultProfilePreferences);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [online, setOnline] = useState(true);
@@ -345,8 +348,8 @@ export default function Home() {
     {!online && <div className="offline-banner" role="status">Offline · Saved items remain available</div>}
     <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => setTab('Profile')}>● {preferences.locationLabel} {preferences.zipCode}⌄</button>}</div><button className="circle" onClick={() => tab === 'Profile' ? notify('Profile settings are saved on this device') : setTab('Map')} aria-label={tab === 'Profile' ? 'Profile settings status' : 'Open map'}>{tab === 'Profile' ? '⚙' : '➤'}</button></header>
     <div className="content">
-      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} openConnections={() => setTab('Profile')} notify={notify} preferences={preferences}/>}
-      {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify} preferences={preferences}/>}
+      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} openConnections={() => setTab('Profile')} notify={notify} preferences={preferences} onCheckInventory={setInventoryItem}/>}
+      {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify} preferences={preferences} onCheckInventory={setInventoryItem}/>}
       {tab === 'Saved' && <Saved
         query={savedQuery}
         setQuery={setSavedQuery}
@@ -371,6 +374,7 @@ export default function Home() {
       onFinish={finishOnboarding}
       onUseDefaults={() => finishOnboarding(defaultProfilePreferences)}
     />}
+    {inventoryItem && <InventorySheet item={inventoryItem} zipCode={preferences.zipCode} onClose={() => setInventoryItem(null)}/>}
   </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Real U.S. stores • Verified price feeds only</small></aside></main>;
 }
 
@@ -402,7 +406,7 @@ function Onboarding({ preferences, onFinish, onUseDefaults }: { preferences: Pro
   </section>;
 }
 
-function Search({ query, setQuery, open, openConnections, notify, preferences }: { query: string; setQuery: (value: string) => void; open: () => void; openConnections: () => void; notify: (message: string) => void; preferences: ProfilePreferences }) {
+function Search({ query, setQuery, open, openConnections, notify, preferences, onCheckInventory }: { query: string; setQuery: (value: string) => void; open: () => void; openConnections: () => void; notify: (message: string) => void; preferences: ProfilePreferences; onCheckInventory: (item: LivePrice) => void }) {
   const priceSearch = useVerifiedPriceSearch(String(query));
   const defaultFilters = useMemo(() => profileSearchFilters(preferences), [preferences]);
   const [filters, setFilters] = useState<SearchFilters>(() => profileSearchFilters(preferences));
@@ -518,7 +522,7 @@ function Search({ query, setQuery, open, openConnections, notify, preferences }:
         const freshness = formatVerificationFreshness(item.updatedAt);
         const selected = compareIds.includes(item.id);
         const saved = savedProducts.some(savedItem => savedItem.id === item.id);
-        return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b className={freshness.stale ? 'verification-stale' : 'verification-fresh'}>{freshness.label}</b></div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial $${cost.total.toFixed(2)} + shipping`}<span>{cost.method}</span></em><button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
+        return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b className={freshness.stale ? 'verification-stale' : 'verification-fresh'}>{freshness.label}</b></div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial $${cost.total.toFixed(2)} + shipping`}<span>{cost.method === 'Local pickup' ? 'Pickup planning · verify store' : cost.method}</span></em>{item.fulfillment.some(option => option.toLowerCase().includes('pickup')) && <button className="pickup-check" onClick={() => onCheckInventory(item)}>⌖ Check pickup</button>}<button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
       })}</div>}
       {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(defaultFilters)}>Reset filters</button>}{!priceSearch.offers.length && <button onClick={openConnections}>View retailer status</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
     </>}
@@ -620,7 +624,43 @@ function CompareSheet({ items, scope, preferences, onClose }: { items: LivePrice
     const distance = nearestRetailerDistance(item.retailer, preferences.coordinates);
     const freshness = formatVerificationFreshness(item.updatedAt);
     return <article key={item.id}><div className="compare-brand">{item.retailer}</div><h3>{item.title}</h3><dl><div><dt>Item price</dt><dd>${item.price.toFixed(2)}</dd></div><div className="total"><dt>{cost.complete ? 'Estimated total' : 'Partial total'}</dt><dd>${cost.total.toFixed(2)}{!cost.complete && ' + shipping'}</dd></div><div><dt>Verified</dt><dd className={freshness.stale ? 'stale-copy' : ''}>{freshness.label.replace(/^Verified /, '')}</dd></div><div><dt>Tax estimate</dt><dd>${cost.tax.toFixed(2)}</dd></div><div><dt>Shipping</dt><dd>{cost.shipping === null ? 'Not provided' : cost.shipping === 0 ? 'Free' : `$${cost.shipping.toFixed(2)}`}</dd></div><div><dt>Round-trip travel</dt><dd>{cost.travel === null ? 'Not applicable' : `$${cost.travel.toFixed(2)}`}</dd></div><div><dt>Distance</dt><dd>{distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</dd></div><div><dt>Availability</dt><dd>{item.availability}</dd></div><div><dt>Fulfillment</dt><dd>{item.fulfillment.join(' / ') || 'Not provided'}</dd></div><div><dt>Model match</dt><dd>{item.matchType}</dd></div><div><dt>Returns</dt><dd><a href={item.productUrl} target="_blank" rel="noreferrer">See retailer policy</a></dd></div></dl></article>;
-  })}</div><p className="cost-disclaimer">Totals use verified item prices, official shipping when supplied, your {preferences.salesTaxPercent.toFixed(2)}% tax assumption, and ${preferences.travelCostPerMile.toFixed(2)} per round-trip mile. Change these assumptions in Profile and confirm final tax and shipping at checkout.</p></section></div>;
+  })}</div><p className="cost-disclaimer">Totals use verified item prices, official shipping when supplied, your {preferences.salesTaxPercent.toFixed(2)}% tax assumption, and ${preferences.travelCostPerMile.toFixed(2)} per round-trip mile. Pickup totals use the nearest mapped retailer for planning; run Check pickup to verify an in-stock store. Confirm final tax and shipping at checkout.</p></section></div>;
+}
+
+type InventoryLookup = {
+  status: 'loading' | 'ready' | 'error';
+  stores: InventoryStore[];
+  checkedAt: string | null;
+  ispuEligible: boolean;
+  message: string;
+};
+
+function InventorySheet({ item, zipCode, onClose }: { item: LivePrice; zipCode: string; onClose: () => void }) {
+  const [attempt, setAttempt] = useState(0);
+  const [lookup, setLookup] = useState<InventoryLookup>({ status: 'loading', stores: [], checkedAt: null, ispuEligible: true, message: '' });
+  const dialog = useAccessibleDialog(onClose);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/inventory?sku=${encodeURIComponent(item.sku)}&zip=${encodeURIComponent(zipCode)}`, { signal: controller.signal, cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json() as { stores?: InventoryStore[]; checkedAt?: string; ispuEligible?: boolean; error?: string };
+        if (!response.ok) throw new Error(data.error || 'Pickup availability could not be checked.');
+        setLookup({ status: 'ready', stores: data.stores ?? [], checkedAt: data.checkedAt ?? null, ispuEligible: data.ispuEligible !== false, message: '' });
+      })
+      .catch(error => {
+        if (controller.signal.aborted) return;
+        setLookup({ status: 'error', stores: [], checkedAt: null, ispuEligible: true, message: error instanceof Error ? error.message : 'Pickup availability could not be checked.' });
+      });
+    return () => controller.abort();
+  }, [attempt, item.sku, zipCode]);
+
+  const freshness = formatVerificationFreshness(lookup.checkedAt);
+  const retry = () => {
+    setLookup({ status: 'loading', stores: [], checkedAt: null, ispuEligible: true, message: '' });
+    setAttempt(current => current + 1);
+  };
+  return <div className="filter-backdrop inventory-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section {...dialog} className="inventory-sheet" role="dialog" aria-modal="true" aria-labelledby="inventory-title"><div className="filter-sheet-head"><div><small>OFFICIAL STORE INVENTORY</small><h2 id="inventory-title">Pickup near {zipCode}</h2></div><button onClick={onClose} aria-label="Close pickup availability">×</button></div><h3>{item.title}</h3><div className="inventory-price"><span><small>CATALOG PRICE</small><strong>${item.price.toFixed(2)}</strong></span><b className={lookup.status === 'ready' ? 'ready' : ''}>{lookup.status === 'loading' ? 'Checking stores…' : lookup.status === 'ready' ? freshness.label : 'Check unavailable'}</b></div>{lookup.status === 'loading' && <div className="inventory-loading" role="status"><i/><span>Checking Best Buy’s official store inventory</span></div>}{lookup.status === 'error' && <div className="inventory-error" role="status"><b>Pickup check unavailable</b><span>{lookup.message}</span><button onClick={retry}>Try again</button></div>}{lookup.status === 'ready' && !lookup.ispuEligible && <div className="inventory-empty" role="status"><b>Pickup is not offered for this item</b><span>The official feed does not list this product as store-pickup eligible.</span></div>}{lookup.status === 'ready' && lookup.ispuEligible && lookup.stores.length === 0 && <div className="inventory-empty" role="status"><b>No pickup stores reported</b><span>No in-stock Best Buy location was returned within 250 miles of {zipCode}.</span></div>}{lookup.status === 'ready' && lookup.stores.length > 0 && <div className="inventory-store-list">{lookup.stores.slice(0, 12).map(store => <article key={store.storeId}><div><span><b>{store.name.startsWith('Best Buy') ? store.name : `Best Buy ${store.name}`}</b>{store.lowStock && <em>Low stock</em>}</span><small>{store.distance.toFixed(1)} mi · {store.address}</small><small>{store.city}, {store.state} {store.postalCode}</small><p>{store.minPickupHours === null ? 'Pickup timing shown by retailer at checkout' : store.minPickupHours === 0 ? 'Pickup may be available today' : `Ready in at least ${store.minPickupHours} ${store.minPickupHours === 1 ? 'hour' : 'hours'}`}</p></div><nav aria-label={`Directions to ${store.name}`}><a href={inventoryDirectionsUrl(store, 'apple')} target="_blank" rel="noreferrer">Apple Maps</a><a href={inventoryDirectionsUrl(store, 'google')} target="_blank" rel="noreferrer">Google Maps</a></nav></article>)}</div>}<a className="inventory-product-link" href={item.productUrl} target="_blank" rel="noreferrer">Confirm and reserve at Best Buy ›</a><p className="inventory-disclaimer">Only stores reported in stock by the official retailer feed are shown. Inventory can change before arrival; confirm pickup and final price with the retailer.</p></section></div>;
 }
 
 function PriceHistorySheet({ item, onClose }: { item: LivePrice; onClose: () => void }) {
@@ -988,7 +1028,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
   </div>;
 }
 
-function Map({ query, setQuery, offer, setOffer, notify, preferences }: { query: string; setQuery: (value: string) => void; offer: Offer; setOffer: (offer: Offer) => void; notify: (message: string) => void; preferences: ProfilePreferences }) {
+function Map({ query, setQuery, offer, setOffer, notify, preferences, onCheckInventory }: { query: string; setQuery: (value: string) => void; offer: Offer; setOffer: (offer: Offer) => void; notify: (message: string) => void; preferences: ProfilePreferences; onCheckInventory: (item: LivePrice) => void }) {
   const [view, setView] = useState<MapView>({ radius: 20, count: 3 });
   const prices = useVerifiedPriceSearch(String(query));
   const [display, setDisplay] = useState<'map' | 'list'>('map');
@@ -1070,6 +1110,7 @@ function Map({ query, setQuery, offer, setOffer, notify, preferences }: { query:
         query={query}
         search={selectedSearch}
         storeName={offer.store}
+        onCheckInventory={onCheckInventory}
       />}
       <div className="deal-note"><span>✓</span><p><b>Verified prices only</b><small>Unconnected retailers never receive an estimated price</small></p></div>
     </article>
@@ -1091,7 +1132,7 @@ function MapStoreList({ stores, selected, verifiedRetailers, filters, home, onSe
   })}</div> : <div className="map-list-empty"><b>No stores match</b><span>{filters.verifiedOnly ? 'No connected retailer price feeds are visible in this area yet.' : 'Move the map or broaden the distance filter.'}</span><button onClick={onClearFilters}>Clear map filters</button></div>}<MapDataAttribution list/></section>;
 }
 
-function LivePriceResults({ query, search, storeName }: { query: string; search: PriceSearch; storeName?: string }) {
+function LivePriceResults({ query, search, storeName, onCheckInventory }: { query: string; search: PriceSearch; storeName?: string; onCheckInventory: (item: LivePrice) => void }) {
   if (search.status === 'idle') return <div className="price-feed-state"><b>Search for a product</b><span>DealRadar will check connected official retailer feeds.</span></div>;
   if (search.status === 'loading') return <div className="price-feed-state loading"><b>Checking official price feeds…</b><span>Looking for “{query}”</span></div>;
   if (search.status === 'error') return <div className="price-feed-state error"><b>Price search is unavailable</b><span>Please try again in a moment.</span></div>;
@@ -1099,7 +1140,7 @@ function LivePriceResults({ query, search, storeName }: { query: string; search:
   if (search.offers.length) {
     return <section className="live-prices" aria-label="Verified live prices"><div className="live-prices-title"><b>Verified catalog prices</b><a className="official-feed-link" href="https://developer.bestbuy.com/" target="_blank" rel="noreferrer" aria-label="Powered by the Best Buy Developer API">Official API ↗</a></div>{search.offers.slice(0, 2).map(item => {
       const freshness = formatVerificationFreshness(item.updatedAt);
-      return <article key={item.id}><span><b>{item.title}</b><small>{item.retailer} · {item.matchType === 'exact' ? 'Exact match' : item.matchType === 'similar' ? 'Similar model' : 'Possible match'}</small><small className={freshness.stale ? 'stale-copy' : 'map-price-freshness'}>{freshness.label}</small></span><strong>${item.price.toFixed(2)}<a href={item.productUrl} target="_blank" rel="noreferrer">View ›</a></strong></article>;
+      return <article key={item.id}><span><b>{item.title}</b><small>{item.retailer} · {item.matchType === 'exact' ? 'Exact match' : item.matchType === 'similar' ? 'Similar model' : 'Possible match'}</small><small className={freshness.stale ? 'stale-copy' : 'map-price-freshness'}>{freshness.label}</small></span><strong>${item.price.toFixed(2)}{item.fulfillment.some(option => option.toLowerCase().includes('pickup')) && <button onClick={() => onCheckInventory(item)}>Check pickup</button>}<a href={item.productUrl} target="_blank" rel="noreferrer">View ›</a></strong></article>;
     })}{storeName && <p className="inventory-caveat">Catalog price shown. Confirm inventory for {storeName} before traveling.</p>}</section>;
   }
 

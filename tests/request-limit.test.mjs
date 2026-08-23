@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FixedWindowRequestLimiter, enforceRequestLimit } from '../app/api/request-limit.ts';
 import { GET as getOffers } from '../app/api/offers/route.ts';
+import { GET as getInventory } from '../app/api/inventory/route.ts';
 import { GET as getRetailers } from '../app/api/retailers/route.ts';
 import { GET as getStores } from '../app/api/stores/route.ts';
 
@@ -60,6 +61,11 @@ test('expensive routes enforce their own request budgets', async () => {
   let response;
   for (let index = 0; index < 31; index += 1) {
     response = await getOffers(makeRequest('/api/offers?q=a', '203.0.113.31'));
+  }
+  assert.equal(response.status, 429);
+
+  for (let index = 0; index < 21; index += 1) {
+    response = await getInventory(makeRequest('/api/inventory?sku=bad&zip=bad', '203.0.113.34'));
   }
   assert.equal(response.status, 429);
 

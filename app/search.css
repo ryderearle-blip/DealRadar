@@ -93,6 +93,7 @@
 .result-price em { display: block; margin-top: 5px; color: #435064; font-size: 8px; font-style: normal; font-weight: 750; }
 .result-price em span { display: block; color: var(--muted); font-size: 7px; font-weight: 500; }
 .result-price button { display: block; margin: 7px 0 0 auto; border: 0; background: none; padding: 0; color: #7553b3; font-size: 8px; font-weight: 750; }
+.result-price .pickup-check { color: var(--green); }
 .result-price a { display: block; margin-top: 8px; color: var(--blue); font-size: 9px; font-weight: 750; text-decoration: none; }
 
 .compare-tray { position: absolute; left: 17px; right: 17px; bottom: 77px; z-index: 30; display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center; border: 1px solid #314258; border-radius: 19px; padding: 8px 9px 8px 12px; background: #102036f5; color: #fff; box-shadow: 0 12px 30px #10203645; }
@@ -127,7 +128,8 @@
 
 .barcode-sheet,
 .compare-sheet,
-.history-sheet { width: 100%; max-height: calc(100% - 45px); overflow-y: auto; border-radius: 28px 28px 0 0; padding: 18px 21px max(22px,env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -14px 40px #10203625; }
+.history-sheet,
+.inventory-sheet { width: 100%; max-height: calc(100% - 45px); overflow-y: auto; border-radius: 28px 28px 0 0; padding: 18px 21px max(22px,env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -14px 40px #10203625; }
 .camera-view { position: relative; height: 230px; overflow: hidden; display: grid; place-items: center; border-radius: 22px; background: linear-gradient(145deg,#182536,#05090e); color: #fff; }
 .camera-view video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .camera-view span { position: relative; z-index: 2; width: 82%; height: 105px; border: 2px solid #fff; border-radius: 15px; box-shadow: 0 0 0 999px #06101a66; }
@@ -142,6 +144,35 @@
 .barcode-sheet form input { width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 14px; padding: 0 12px; outline: 0; }
 .barcode-sheet form button { height: 44px; border: 0; border-radius: 14px; padding: 0 12px; background: var(--green); color: #fff; font-size: 9px; font-weight: 800; }
 .privacy-note { display: block; margin-top: 12px; color: var(--muted); font-size: 8px; text-align: center; }
+
+.inventory-sheet > h3 { margin: 0 0 10px; font-size: 12px; line-height: 1.35; }
+.inventory-price { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-radius: 16px; padding: 10px 12px; background: #f2f6f8; }
+.inventory-price span small,
+.inventory-price span strong { display: block; }
+.inventory-price span small { color: var(--muted); font-size: 7px; font-weight: 850; letter-spacing: .07em; }
+.inventory-price span strong { margin-top: 2px; color: var(--green); font-size: 20px; }
+.inventory-price > b { border-radius: 10px; padding: 5px 7px; background: #eef1f4; color: var(--muted); font-size: 8px; }
+.inventory-price > b.ready { background: #e7f3ff; color: var(--blue); }
+.inventory-loading,
+.inventory-error,
+.inventory-empty { display: grid; justify-items: center; gap: 7px; margin-top: 11px; border: 1px dashed #c8d1d9; border-radius: 17px; padding: 22px 16px; background: #f8fafb; color: #435064; text-align: center; }
+.inventory-loading { grid-template-columns: auto 1fr; justify-items: start; align-items: center; font-size: 9px; }
+.inventory-loading i { width: 18px; height: 18px; border: 2px solid #c9d3db; border-top-color: var(--green); border-radius: 50%; animation: map-spin .75s linear infinite; }
+.inventory-error span,
+.inventory-empty span { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.inventory-error button { border: 1px solid var(--green); border-radius: 13px; padding: 7px 10px; background: #fff; color: var(--green); font-size: 8px; font-weight: 800; }
+.inventory-store-list { display: grid; gap: 8px; margin-top: 11px; }
+.inventory-store-list article { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px; border: 1px solid var(--line); border-radius: 16px; padding: 10px; background: #fff; }
+.inventory-store-list article > div { min-width: 0; }
+.inventory-store-list article > div > span { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.inventory-store-list article b { font-size: 10px; }
+.inventory-store-list article em { border-radius: 8px; padding: 3px 5px; background: #fff0ed; color: #a0493e; font-size: 7px; font-style: normal; font-weight: 800; }
+.inventory-store-list article small { display: block; overflow: hidden; margin-top: 3px; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.inventory-store-list article p { margin: 5px 0 0; color: var(--green); font-size: 8px; font-weight: 750; }
+.inventory-store-list article nav { display: grid; align-content: center; gap: 6px; }
+.inventory-store-list article nav a { color: var(--blue); font-size: 8px; font-weight: 750; text-align: right; text-decoration: none; }
+.inventory-product-link { display: block; margin-top: 12px; border-radius: 16px; padding: 12px; background: var(--green); color: #fff; font-size: 9px; font-weight: 850; text-align: center; text-decoration: none; }
+.inventory-disclaimer { margin: 9px 2px 0; color: var(--muted); font-size: 8px; line-height: 1.45; text-align: center; }
 
 .compare-sheet { padding-left: 15px; padding-right: 15px; }
 .compare-grid { display: grid; grid-auto-columns: minmax(235px,82%); grid-auto-flow: column; gap: 10px; overflow-x: auto; padding: 3px 0 12px; scroll-snap-type: x mandatory; }
@@ -182,7 +213,8 @@
   .filter-sheet::before { display: none; }
   .filter-actions { margin-left: -25px; margin-right: -25px; padding-left: 25px; padding-right: 25px; }
   .barcode-sheet,
-  .history-sheet { width: min(500px,calc(100% - 60px)); border-radius: 26px; }
+  .history-sheet,
+  .inventory-sheet { width: min(560px,calc(100% - 60px)); border-radius: 26px; }
   .compare-sheet { width: min(900px,calc(100% - 60px)); border-radius: 26px; }
   .compare-grid { grid-auto-columns: minmax(240px,1fr); }
   .compare-tray { left: 225px; right: 28px; bottom: 25px; }

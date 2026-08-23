@@ -34,7 +34,7 @@ test('the application proxy applies the centralized browser security policy', as
 
 test('every interactive product sheet uses the shared accessible dialog behavior', async () => {
   const clientPage = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
-  for (const className of ['barcode-sheet', 'compare-sheet', 'history-sheet', 'filter-sheet', 'watch-sheet', 'profile-sheet']) {
+  for (const className of ['barcode-sheet', 'compare-sheet', 'history-sheet', 'inventory-sheet', 'filter-sheet', 'watch-sheet', 'profile-sheet']) {
     assert.match(clientPage, new RegExp(`<section \\{\\.\\.\\.dialog\\} className="${className}"`));
   }
   assert.match(clientPage, /if \(isDialogDismissKey\(event\.key\)\)/);
