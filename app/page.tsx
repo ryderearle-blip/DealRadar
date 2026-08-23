@@ -8,7 +8,7 @@ import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch,
 import { defaultProfilePreferences, deviceShoppingLocation, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences, type ShoppingLocation } from './profile-logic';
 import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './onboarding-logic';
 import type { RetailerStatus } from './retailer-connections';
-import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, parseStoreLocations, sampleStoreLocations, storeSearchBounds, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
+import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, parseStoreLocations, sampleStoreLocations, storeCategoriesForProductQuery, storeCategoryLabel, storeSearchBounds, type OpenStreetMapElement, type StoreBounds, type StoreCategory, type StoreLocation } from './store-discovery';
 import { dialogWrapTarget, isDialogDismissKey } from './dialog-logic';
 import { inventoryDirectionsUrl, inventoryEvidence, type InventoryStore, type VerifiedInventoryCheck } from './inventory-logic';
 
@@ -27,6 +27,7 @@ type Offer = {
   coordinates?: [number, number];
   mapTier?: 1 | 2 | 3;
   sourceUrl?: string;
+  category?: StoreCategory;
 };
 
 type LivePrice = {
@@ -144,11 +145,12 @@ function mappedStoreOffer(store: StoreLocation, home: [number, number]): Offer {
   return {
     id: store.id,
     store: store.name,
+    category: store.category,
     price: null,
     distance: storeDistanceLabel(home, store.coordinates),
     color: visual.color,
     mark: visual.mark,
-    detail: 'Mapped store · verify price and stock',
+    detail: `${storeCategoryLabel(store.category)} · verify price and stock`,
     address: store.address,
     coordinates: store.coordinates,
     sourceUrl: store.sourceUrl,
@@ -487,7 +489,8 @@ function Search({ query, setQuery, openMap, openConnections, notify, preferences
   const localSearchRadius = filters.maxDistance ?? preferences.searchRadius;
   const nearbyStoreSearch = useNearbySearchStores(preferences.coordinates, localSearchRadius, isSearching && filters.scope !== 'online');
   const mappedSearchStores = useMemo(() => nearbyStoreSearch.stores.map(store => ({ store: store.name, coordinates: store.coordinates })), [nearbyStoreSearch.stores]);
-  const nearbySearchOffers = useMemo(() => sortMappedStoresByDistance(nearbyStoreSearch.stores.map(store => mappedStoreOffer(store, preferences.coordinates)), preferences.coordinates).filter(store => store.coordinates && milesBetween(preferences.coordinates, store.coordinates) <= localSearchRadius).slice(0, 6), [localSearchRadius, nearbyStoreSearch.stores, preferences.coordinates]);
+  const relevantStoreCategories = useMemo(() => new Set(storeCategoriesForProductQuery(String(query))), [query]);
+  const nearbySearchOffers = useMemo(() => sortMappedStoresByDistance(nearbyStoreSearch.stores.filter(store => relevantStoreCategories.has(store.category)).map(store => mappedStoreOffer(store, preferences.coordinates)), preferences.coordinates).filter(store => store.coordinates && milesBetween(preferences.coordinates, store.coordinates) <= localSearchRadius).slice(0, 6), [localSearchRadius, nearbyStoreSearch.stores, preferences.coordinates, relevantStoreCategories]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -597,7 +600,7 @@ function Search({ query, setQuery, openMap, openConnections, notify, preferences
       </div>
       <div className="search-result-heading"><div><small>{filters.scope.toUpperCase()} · VERIFIED RETAILER RESULTS</small><h2>{priceSearch.status === 'loading' ? 'Searching…' : `${filteredOffers.length} results`}</h2></div><button onClick={beginFiltering}>{filters.sort === 'best' ? 'Best match' : filters.sort === 'price-low' ? 'Lowest price' : filters.sort === 'price-high' ? 'Highest price' : filters.sort === 'total-cost' ? 'Total cost' : 'Nearest'}⌄</button></div>
       {priceSearch.status === 'ready' && priceSearch.offers.length > 0 && <p className="search-cost-note">Planning totals use your Profile assumptions: {preferences.salesTaxPercent.toFixed(2)}% tax · ${preferences.travelCostPerMile.toFixed(2)}/mi round trip.</p>}
-      {priceSearch.status !== 'idle' && filters.scope !== 'online' && <div className={`search-location-evidence ${nearbyStoreSearch.status}`}><i>{nearbyStoreSearch.status === 'loading' ? '◌' : nearbyStoreSearch.status === 'ready' ? '⌖' : '!'}</i><span><b>{nearbyStoreSearch.status === 'loading' ? `Finding real stores near ${preferences.locationLabel}…` : nearbyStoreSearch.status === 'ready' ? `${nearbySearchOffers.length} nearby real stores found` : 'Nearby map data unavailable'}</b><small>{nearbyStoreSearch.status === 'ready' ? `Planning distances use mapped stores within ${localSearchRadius} miles; run Check pickup for live stock.` : nearbyStoreSearch.status === 'error' ? 'Local distance stays hidden until a mapped store or official pickup check is available.' : 'Local results will update when nearby stores load.'}</small></span></div>}
+      {priceSearch.status !== 'idle' && filters.scope !== 'online' && <div className={`search-location-evidence ${nearbyStoreSearch.status}`}><i>{nearbyStoreSearch.status === 'loading' ? '◌' : nearbyStoreSearch.status === 'ready' ? '⌖' : '!'}</i><span><b>{nearbyStoreSearch.status === 'loading' ? `Finding real stores near ${preferences.locationLabel}…` : nearbyStoreSearch.status === 'ready' ? `${nearbySearchOffers.length} relevant nearby stores found` : 'Nearby map data unavailable'}</b><small>{nearbyStoreSearch.status === 'ready' ? `Product-aware planning uses real mapped stores within ${localSearchRadius} miles; run Check pickup for live stock.` : nearbyStoreSearch.status === 'error' ? 'Local distance stays hidden until a mapped store or official pickup check is available.' : 'Local results will update when nearby stores load.'}</small></span></div>}
       {priceSearch.status === 'loading' && <div className="search-loading"><span/><b>Checking official price feeds</b><small>Prices are never estimated.</small></div>}
       {priceSearch.status === 'error' && <div className="search-no-results"><b>Search is temporarily unavailable</b><span>Try again in a moment.</span></div>}
       {priceSearch.status === 'ready' && recommendation && <DealRadarPick recommendation={recommendation} zipCode={preferences.zipCode} onCheckInventory={onCheckInventory}/>}
@@ -649,7 +652,7 @@ function DealRadarPick({ recommendation, zipCode, onCheckInventory }: { recommen
 }
 
 function NearbySearchStoreResults({ stores, home, radius, onOpen }: { stores: Offer[]; home: [number, number]; radius: number; onOpen: (store: Offer) => void }) {
-  return <section className="nearby-search-stores" aria-labelledby="nearby-search-title"><div className="nearby-search-head"><div><small>REAL MAPPED LOCATIONS</small><h2 id="nearby-search-title">Nearby stores to check</h2></div><span>Within {radius} mi</span></div><p>These electronics and department stores may carry the item. Their location is mapped, but price and stock are not verified.</p><div className="nearby-search-list">{stores.map(store => <article key={store.id ?? store.store}><b className="nearby-store-logo" style={{ background: store.color }}>{store.mark}</b><span><strong>{store.store}</strong><small>{store.coordinates ? storeDistanceLabel(home, store.coordinates) : store.distance}</small><em>{store.address}</em><nav><button onClick={() => onOpen(store)}>Show on map</button>{store.coordinates && <><a href={appleMapsDirectionsUrl(home, store.coordinates)} target="_blank" rel="noreferrer">Apple Maps</a><a href={googleMapsDirectionsUrl(home, store.coordinates)} target="_blank" rel="noreferrer">Google Maps</a></>}{store.sourceUrl && <a href={store.sourceUrl} target="_blank" rel="noreferrer">Verify source</a>}</nav></span></article>)}</div><MapDataAttribution list/></section>;
+  return <section className="nearby-search-stores" aria-labelledby="nearby-search-title"><div className="nearby-search-head"><div><small>PRODUCT-RELEVANT LOCATIONS</small><h2 id="nearby-search-title">Nearby stores to check</h2></div><span>Within {radius} mi</span></div><p>Store types are matched to the product search using real map categories. Locations come from OpenStreetMap; item price, selection, and stock are not verified.</p><div className="nearby-search-list">{stores.map(store => <article key={store.id ?? store.store}><b className="nearby-store-logo" style={{ background: store.color }}>{store.mark}</b><span><strong>{store.store}</strong><small>{store.category ? `${storeCategoryLabel(store.category)} · ` : ''}{store.coordinates ? storeDistanceLabel(home, store.coordinates) : store.distance}</small><em>{store.address}</em><nav><button onClick={() => onOpen(store)}>Show on map</button>{store.coordinates && <><a href={appleMapsDirectionsUrl(home, store.coordinates)} target="_blank" rel="noreferrer">Apple Maps</a><a href={googleMapsDirectionsUrl(home, store.coordinates)} target="_blank" rel="noreferrer">Google Maps</a></>}{store.sourceUrl && <a href={store.sourceUrl} target="_blank" rel="noreferrer">Verify source</a>}</nav></span></article>)}</div><MapDataAttribution list/></section>;
 }
 
 function PredictiveSearchBox({ value, setValue, suggestions, open, setOpen, onSelect, onScan, onClearRecent }: { value: string; setValue: (value: string) => void; suggestions: { title: string; meta: string; value: string }[]; open: boolean; setOpen: (open: boolean) => void; onSelect: (value: string) => void; onScan: () => void; onClearRecent: () => void }) {

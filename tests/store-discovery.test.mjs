@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, normalizeStoreBounds, parseStoreLocations, sampleStoreLocations, storeBoundsKey, storeSearchBounds } from '../app/store-discovery.ts';
+import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, normalizeStoreBounds, parseStoreLocations, sampleStoreLocations, storeBoundsKey, storeCategoriesForProductQuery, storeCategoryLabel, storeSearchBounds } from '../app/store-discovery.ts';
 
 const bounds = { south: 35, west: -81.5, north: 35.5, east: -80.8 };
 
@@ -25,7 +25,7 @@ test('builds a bounded retailer query and stable cache key', () => {
 
 test('keeps real named records, cleans text, and removes nearby duplicates', () => {
   const stores = parseStoreLocations([
-    { id: 10, type: 'node', lat: 35.2, lon: -81.1, tags: { name: 'Best\u0000 Buy', 'addr:housenumber': '3050', 'addr:street': 'E Franklin Blvd', 'addr:city': 'Gastonia', 'addr:state': 'NC' } },
+    { id: 10, type: 'node', lat: 35.2, lon: -81.1, tags: { name: 'Best\u0000 Buy', shop: 'electronics', 'addr:housenumber': '3050', 'addr:street': 'E Franklin Blvd', 'addr:city': 'Gastonia', 'addr:state': 'NC' } },
     { id: 11, type: 'way', center: { lat: 35.2002, lon: -81.1002 }, tags: { brand: 'Best Buy' } },
     { id: 12, type: 'node', lat: 34, lon: -81.1, tags: { name: 'Outside' } },
     { id: 13, type: 'node', lat: 35.3, lon: -81.2, tags: {} },
@@ -34,11 +34,20 @@ test('keeps real named records, cleans text, and removes nearby duplicates', () 
   assert.deepEqual(stores, [{
     id: 'osm-node-10',
     name: 'Best Buy',
+    category: 'electronics',
     address: '3050 E Franklin Blvd · Gastonia, NC',
     coordinates: [-81.1, 35.2],
     source: 'openstreetmap',
     sourceUrl: 'https://www.openstreetmap.org/node/10',
   }]);
+});
+
+test('matches common product searches to relevant real store categories', () => {
+  assert.deepEqual(storeCategoriesForProductQuery('Sony 55-inch OLED TV'), ['electronics', 'department_store']);
+  assert.deepEqual(storeCategoriesForProductQuery('gaming laptop'), ['electronics', 'department_store', 'computer', 'video_games']);
+  assert.deepEqual(storeCategoriesForProductQuery('washer and dryer'), ['department_store', 'appliance']);
+  assert.deepEqual(storeCategoriesForProductQuery('012345678905'), ['electronics', 'department_store', 'computer', 'appliance', 'video_games']);
+  assert.equal(storeCategoryLabel('video_games'), 'Video game store');
 });
 
 test('uses one detailed window nearby and bounded representative windows nationwide', () => {
@@ -73,7 +82,7 @@ test('samples a wide view with retailer variety before repeated brands', () => {
     ['best-two', 'Best Buy Seattle'],
     ['target-one', 'Target Austin'],
     ['walmart-one', 'Walmart Denver'],
-  ].map(([id, name], index) => ({ id, name, address: 'Mapped business location', coordinates: [-100 + index, 35], source: 'openstreetmap', sourceUrl: `https://www.openstreetmap.org/node/${index + 1}` }));
+  ].map(([id, name], index) => ({ id, name, category: 'department_store', address: 'Mapped business location', coordinates: [-100 + index, 35], source: 'openstreetmap', sourceUrl: `https://www.openstreetmap.org/node/${index + 1}` }));
   const sampled = sampleStoreLocations(stores, 3);
   assert.equal(sampled.length, 3);
   assert.deepEqual(new Set(sampled.map(store => store.name.split(' ')[0])), new Set(['Best', 'Target', 'Walmart']));

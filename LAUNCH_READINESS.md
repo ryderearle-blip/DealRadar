@@ -22,6 +22,7 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 - [x] Optional same-origin device location for precise distance and trip-cost estimates, with ZIP-center fallback and device-local disclosure
 - [x] Load real nearby mapped stores for nationwide Search distance and total-cost planning instead of starter-region fallbacks
 - [x] Keep Search useful without a price feed by showing source-backed nearby stores, directions, and exact Map handoff
+- [x] Preserve real map categories and use product-aware store matching in Search without implying item availability
 - [x] Server-side U.S. boundary validation, six-hour caching, and nearby-record deduplication
 - [ ] Replace the shared public Overpass endpoint with a production-ready store index or contracted map data service
 - [ ] Add monitoring and an update schedule for store locations

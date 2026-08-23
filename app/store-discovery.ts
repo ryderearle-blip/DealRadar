@@ -5,9 +5,12 @@ export type StoreBounds = {
   east: number;
 };
 
+export type StoreCategory = 'electronics' | 'department_store' | 'computer' | 'appliance' | 'video_games' | 'other';
+
 export type StoreLocation = {
   id: string;
   name: string;
+  category: StoreCategory;
   address: string;
   coordinates: [number, number];
   source: 'openstreetmap';
@@ -26,6 +29,26 @@ export type OpenStreetMapElement = {
 const USA_LIMITS = { south: 18, west: -171, north: 72, east: -66 } as const;
 const MAX_LATITUDE_SPAN = 5;
 const MAX_LONGITUDE_SPAN = 8;
+const STORE_CATEGORY_ORDER: StoreCategory[] = ['electronics', 'department_store', 'computer', 'appliance', 'video_games'];
+
+export function storeCategoryLabel(category: StoreCategory) {
+  return category === 'department_store' ? 'Department store'
+    : category === 'video_games' ? 'Video game store'
+      : category === 'computer' ? 'Computer store'
+        : category === 'appliance' ? 'Appliance store'
+          : category === 'electronics' ? 'Electronics store' : 'Retail store';
+}
+
+export function storeCategoriesForProductQuery(query: string): StoreCategory[] {
+  const normalized = query.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const categories = new Set<StoreCategory>();
+  const add = (...values: StoreCategory[]) => values.forEach(value => categories.add(value));
+  if (/\b(game|gaming|playstation|ps5|xbox|nintendo|switch|console)\b/.test(normalized)) add('video_games', 'electronics', 'department_store');
+  if (/\b(laptop|computer|pc|macbook|monitor|keyboard|printer|tablet)\b/.test(normalized)) add('computer', 'electronics', 'department_store');
+  if (/\b(appliance|refrigerator|fridge|washer|dryer|microwave|oven|dishwasher|vacuum)\b/.test(normalized)) add('appliance', 'department_store');
+  if (/\b(tv|television|oled|qled|audio|headphone|headphones|earbud|earbuds|speaker|phone|smartphone|camera|drone)\b/.test(normalized)) add('electronics', 'department_store');
+  return categories.size ? STORE_CATEGORY_ORDER.filter(category => categories.has(category)) : [...STORE_CATEGORY_ORDER];
+}
 
 export function storeSearchBounds(home: [number, number], radiusMiles: number): StoreBounds | null {
   const [longitude, latitude] = home;
@@ -193,6 +216,7 @@ export function parseStoreLocations(elements: OpenStreetMapElement[], bounds: St
     locations.set(duplicateKey, {
       id: `osm-${element.type}-${element.id}`,
       name,
+      category: STORE_CATEGORY_ORDER.includes(tags.shop as StoreCategory) ? tags.shop as StoreCategory : 'other',
       address: [streetAddress, locality].filter(Boolean).join(' · ') || 'Mapped business location',
       coordinates: [longitude, latitude],
       source: 'openstreetmap',

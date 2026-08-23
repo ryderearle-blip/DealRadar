@@ -26,7 +26,7 @@ test('store endpoint fails over, caches a normalized area, and exposes no upstre
   globalThis.fetch = async (url, options) => {
     calls.push({ url: String(url), options });
     if (calls.length === 1) return new Response('busy', { status: 503 });
-    return Response.json({ elements: [{ id: 77, type: 'node', lat: 35.2, lon: -81.1, tags: { name: 'Best Buy' } }] });
+    return Response.json({ elements: [{ id: 77, type: 'node', lat: 35.2, lon: -81.1, tags: { name: 'Best Buy', shop: 'electronics' } }] });
   };
   try {
     const request = new Request('https://dealradar.test/api/stores?s=35.1&w=-81.2&n=35.3&e=-81');
@@ -39,6 +39,7 @@ test('store endpoint fails over, caches a normalized area, and exposes no upstre
     assert.deepEqual(payload.stores, [{
       id: 'osm-node-77',
       name: 'Best Buy',
+      category: 'electronics',
       address: 'Mapped business location',
       coordinates: [-81.1, 35.2],
       source: 'openstreetmap',
