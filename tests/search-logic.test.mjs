@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, formatVerificationFreshness, normalizeBarcode, toggleComparison, updatePriceHistory } from '../app/search-logic.ts';
+import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, formatVerificationFreshness, normalizeBarcode, recommendationEvidenceIsTrustworthy, recommendBestOffer, toggleComparison, updatePriceHistory } from '../app/search-logic.ts';
 
 const offers = [
   { id: 'bestbuy', retailer: 'Best Buy', price: 799, availability: 'Available in stores', fulfillment: ['Store pickup', 'Shipping'] },
@@ -54,6 +54,45 @@ test('calculates total cost from item price, tax, verified shipping, and round-t
   assert.equal(online.shipping, 10);
   assert.equal(online.complete, true);
   assert.ok(Math.abs(online.total - 809.5575) < 0.0001);
+});
+
+test('recommends only complete eligible totals for exact product matches', () => {
+  const candidates = [
+    { id: 'exact-complete', matchType: 'exact' },
+    { id: 'exact-incomplete', matchType: 'exact' },
+    { id: 'similar-cheaper', matchType: 'similar' },
+    { id: 'exact-runner', matchType: 'exact' },
+  ];
+  const costs = {
+    'exact-complete': { total: 810, complete: true },
+    'exact-incomplete': { total: 700, complete: false },
+    'similar-cheaper': { total: 750, complete: true },
+    'exact-runner': { total: 835, complete: true },
+  };
+  const recommendation = recommendBestOffer(candidates, item => ({ ...costs[item.id], item: 0, tax: 0, shipping: 0, travel: 0, method: 'Online' }));
+  assert.equal(recommendation.item.id, 'exact-complete');
+  assert.equal(recommendation.matchType, 'exact');
+  assert.equal(recommendation.comparedCount, 2);
+  assert.equal(recommendation.savings, 25);
+});
+
+test('withholds a recommendation when every complete option fails trust eligibility', () => {
+  const candidates = [{ id: 'stale', matchType: 'exact' }, { id: 'missing-shipping', matchType: 'exact' }];
+  const recommendation = recommendBestOffer(
+    candidates,
+    item => ({ item: 0, tax: 0, shipping: item.id === 'stale' ? 0 : null, travel: 0, total: 700, complete: item.id === 'stale', method: 'Online' }),
+    item => item.id !== 'stale',
+  );
+  assert.equal(recommendation, null);
+  assert.equal(recommendBestOffer([{ id: 'similar', matchType: 'similar' }], () => ({ item: 0, tax: 0, shipping: 0, travel: 0, total: 650, complete: true, method: 'Online' })), null);
+});
+
+test('trusts fresh online totals but requires confirmed inventory for a local pick', () => {
+  const now = Date.parse('2026-08-23T12:00:00.000Z');
+  assert.equal(recommendationEvidenceIsTrustworthy('2026-08-23T11:30:00.000Z', 'Online', false, now), true);
+  assert.equal(recommendationEvidenceIsTrustworthy('2026-08-23T11:30:00.000Z', 'Local pickup', false, now), false);
+  assert.equal(recommendationEvidenceIsTrustworthy('2026-08-23T11:30:00.000Z', 'Local pickup', true, now), true);
+  assert.equal(recommendationEvidenceIsTrustworthy('2026-08-22T11:30:00.000Z', 'Online', true, now), false);
 });
 
 test('builds deduplicated predictive suggestions from recent, live, and catalog terms', () => {

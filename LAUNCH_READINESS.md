@@ -40,6 +40,7 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 - [x] No fabricated prices and explicit product-match labels
 - [x] Show official-feed verification age and mark saved prices stale after 24 hours
 - [x] Keep incomplete totals below complete totals when sorting by estimated total cost
+- [x] Recommend only fresh exact matches with complete costs, and require confirmed pickup before a local option can win
 - [x] Device-local export and confirmed shopping-data clearing
 - [ ] Publish Terms of Use, Privacy Policy, affiliate disclosures, and data-retention policy
 - [x] Audit all locked dependencies in CI and apply baseline browser security headers

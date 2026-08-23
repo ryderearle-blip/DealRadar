@@ -33,6 +33,14 @@ export type VerificationFreshness = {
   ageMs: number | null;
 };
 
+export type DealRecommendation<T> = {
+  item: T;
+  cost: EstimatedCost;
+  savings: number | null;
+  comparedCount: number;
+  matchType: 'exact';
+};
+
 const STALE_PRICE_AGE_MS = 24 * 60 * 60 * 1000;
 
 export function formatVerificationFreshness(verifiedAt: string | null | undefined, now = Date.now()): VerificationFreshness {
@@ -48,6 +56,10 @@ export function formatVerificationFreshness(verifiedAt: string | null | undefine
   if (hours < 24) return { label: `Verified ${hours} hr ago`, stale, ageMs };
   if (days < 7) return { label: `Verified ${days} ${days === 1 ? 'day' : 'days'} ago`, stale, ageMs };
   return { label: `Last verified ${new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, stale, ageMs };
+}
+
+export function recommendationEvidenceIsTrustworthy(verifiedAt: string | null | undefined, method: EstimatedCost['method'], pickupVerified: boolean, now = Date.now()) {
+  return !formatVerificationFreshness(verifiedAt, now).stale && (method !== 'Local pickup' || pickupVerified);
 }
 
 export function buildPredictiveSuggestions(query: string, recent: string[], live: SearchSuggestion[], catalog: SearchSuggestion[]) {
@@ -102,6 +114,24 @@ export function calculateEstimatedTotalCost(item: { price: number; shippingCost:
   if (local) return local;
   if (online) return online;
   return { item: item.price, tax, shipping: null, travel: null, total: item.price + tax, complete: false, method: scope === 'local' ? 'Local pickup' : 'Online' };
+}
+
+export function recommendBestOffer<T extends { matchType: 'exact' | 'similar' | 'possible' }>(offers: T[], totalFor: (item: T) => EstimatedCost, isEligible: (item: T, cost: EstimatedCost) => boolean = () => true): DealRecommendation<T> | null {
+  const candidates = offers.flatMap(item => {
+    const cost = totalFor(item);
+    return item.matchType === 'exact' && cost.complete && isEligible(item, cost) ? [{ item, cost }] : [];
+  });
+  if (!candidates.length) return null;
+
+  const comparable = candidates.sort((first, second) => first.cost.total - second.cost.total);
+  const [winner, runnerUp] = comparable;
+  return {
+    item: winner.item,
+    cost: winner.cost,
+    savings: runnerUp ? Math.max(0, runnerUp.cost.total - winner.cost.total) : null,
+    comparedCount: comparable.length,
+    matchType: 'exact',
+  };
 }
 
 export function filterAndSortOffers<T extends FilterableOffer>(offers: T[], filters: FilterValues, distanceFor: (retailer: string, item?: T) => number | null, totalFor?: (item: T) => number | Pick<EstimatedCost, 'total' | 'complete'>) {

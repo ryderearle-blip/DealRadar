@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, formatVerificationFreshness, normalizeBarcode, toggleComparison, updatePriceHistory } from './search-logic';
+import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, formatVerificationFreshness, normalizeBarcode, recommendationEvidenceIsTrustworthy, recommendBestOffer, toggleComparison, updatePriceHistory, type DealRecommendation } from './search-logic';
 import { appleMapsDirectionsUrl, filterMappedStores, googleMapsDirectionsUrl, milesBetween, nearestRetailerDistance, retailerMatchesStore, sortMappedStoresByDistance, storeDistanceLabel, type MapStoreFilters } from './map-logic';
 import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedStores, toggleSavedProduct, toggleSavedStore as toggleSavedStoreRecord, type SavedProductRecord, type SavedSort, type SavedStoreRecord } from './saved-logic';
 import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch, parsePriceWatchSettings, setPriceWatchSetting, type PriceWatchSetting } from './alert-logic';
@@ -548,6 +548,11 @@ function Search({ query, setQuery, openMap, openConnections, notify, preferences
     distanceForOffer,
     item => costForOffer(item, filters.scope, preferences, distanceForOffer(item.retailer, item)),
   ), [distanceForOffer, filters, preferences, priceSearch.offers]);
+  const recommendation = useMemo(() => recommendBestOffer(
+    filteredOffers,
+    item => costForOffer(item, filters.scope, preferences, distanceForOffer(item.retailer, item)),
+    (item, cost) => recommendationEvidenceIsTrustworthy(item.updatedAt, cost.method, pickupEvidenceFor(item).state === 'available'),
+  ), [distanceForOffer, filteredOffers, filters.scope, pickupEvidenceFor, preferences]);
   const comparedOffers = compareIds.flatMap(id => priceSearch.offers.find(item => item.id === id) ?? []);
 
   const appliedCount = [
@@ -595,6 +600,7 @@ function Search({ query, setQuery, openMap, openConnections, notify, preferences
       {priceSearch.status !== 'idle' && filters.scope !== 'online' && <div className={`search-location-evidence ${nearbyStoreSearch.status}`}><i>{nearbyStoreSearch.status === 'loading' ? '◌' : nearbyStoreSearch.status === 'ready' ? '⌖' : '!'}</i><span><b>{nearbyStoreSearch.status === 'loading' ? `Finding real stores near ${preferences.locationLabel}…` : nearbyStoreSearch.status === 'ready' ? `${nearbySearchOffers.length} nearby real stores found` : 'Nearby map data unavailable'}</b><small>{nearbyStoreSearch.status === 'ready' ? `Planning distances use mapped stores within ${localSearchRadius} miles; run Check pickup for live stock.` : nearbyStoreSearch.status === 'error' ? 'Local distance stays hidden until a mapped store or official pickup check is available.' : 'Local results will update when nearby stores load.'}</small></span></div>}
       {priceSearch.status === 'loading' && <div className="search-loading"><span/><b>Checking official price feeds</b><small>Prices are never estimated.</small></div>}
       {priceSearch.status === 'error' && <div className="search-no-results"><b>Search is temporarily unavailable</b><span>Try again in a moment.</span></div>}
+      {priceSearch.status === 'ready' && recommendation && <DealRadarPick recommendation={recommendation} zipCode={preferences.zipCode} onCheckInventory={onCheckInventory}/>}
       {priceSearch.status === 'ready' && filteredOffers.length > 0 && <div className="search-results">{filteredOffers.map(item => {
         const pickupEvidence = pickupEvidenceFor(item);
         const distance = distanceForOffer(item.retailer, item);
@@ -634,6 +640,12 @@ function Search({ query, setQuery, openMap, openConnections, notify, preferences
       onClose={() => setHistoryItem(null)}
     />}
   </section>;
+}
+
+function DealRadarPick({ recommendation, zipCode, onCheckInventory }: { recommendation: DealRecommendation<LivePrice>; zipCode: string; onCheckInventory: (item: LivePrice) => void }) {
+  const { item, cost, savings, comparedCount } = recommendation;
+  const pickup = cost.method === 'Local pickup';
+  return <article className="dealradar-pick" aria-label={`DealRadar pick: ${item.title} from ${item.retailer}`}><div className="dealradar-pick-head"><span><i>✓</i><small>DEALRADAR PICK</small><b>Lowest trustworthy total</b></span><em>{cost.method}</em></div><div className="dealradar-pick-body"><div><small>{item.retailer} · Exact product match</small><h3>{item.title}</h3><p>{savings !== null && savings >= .01 ? `About $${savings.toFixed(2)} less than the next comparable complete estimate.` : comparedCount > 1 ? 'Tied for the lowest complete estimate among exact matches.' : 'The only current exact match with all required cost inputs.'}</p></div><strong><small>ESTIMATED TOTAL</small>${cost.total.toFixed(2)}<em>Item ${item.price.toFixed(2)}</em></strong></div><div className="dealradar-pick-breakdown"><span>Tax estimate <b>${cost.tax.toFixed(2)}</b></span><span>{pickup ? 'Round-trip travel' : 'Shipping'} <b>{pickup ? cost.travel === null ? 'Unavailable' : `$${cost.travel.toFixed(2)}` : cost.shipping === 0 ? 'Free' : cost.shipping === null ? 'Unavailable' : `$${cost.shipping.toFixed(2)}`}</b></span><span>Evidence <b>{pickup ? `Pickup checked near ${zipCode}` : 'Fresh official price'}</b></span></div><footer><small>Only fresh exact matches with complete cost inputs qualify. Tax remains an estimate; confirm the final total with the retailer.</small><div>{pickup && <button onClick={() => onCheckInventory(item)}>Recheck pickup</button>}<a href={item.productUrl} target="_blank" rel="noreferrer">View verified deal ›</a></div></footer></article>;
 }
 
 function NearbySearchStoreResults({ stores, home, radius, onOpen }: { stores: Offer[]; home: [number, number]; radius: number; onOpen: (store: Offer) => void }) {
