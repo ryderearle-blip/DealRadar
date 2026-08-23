@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { filterAndSortOffers } from './search-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -44,6 +45,24 @@ type PriceSearch = {
   status: 'idle' | 'loading' | 'ready' | 'error';
   offers: LivePrice[];
   retailers: RetailerConnection[];
+};
+
+type SearchFilters = {
+  sort: 'best' | 'price-low' | 'price-high' | 'distance';
+  maxPrice: number | null;
+  maxDistance: number | null;
+  availability: 'all' | 'available';
+  fulfillment: 'all' | 'pickup' | 'shipping';
+  retailers: string[];
+};
+
+const emptyFilters: SearchFilters = {
+  sort: 'best',
+  maxPrice: null,
+  maxDistance: null,
+  availability: 'all',
+  fulfillment: 'all',
+  retailers: [],
 };
 
 const offers: Offer[] = [
@@ -109,6 +128,57 @@ const products = [
   ['Nintendo Switch OLED', 'Waiting for live prices', '', '▣'],
 ];
 
+function useVerifiedPriceSearch(query: string): PriceSearch {
+  const [prices, setPrices] = useState<PriceSearch>({ status: 'idle', offers: [], retailers: [] });
+
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+    if (trimmedQuery.length < 2) {
+      const idleTimer = window.setTimeout(() => setPrices({ status: 'idle', offers: [], retailers: [] }), 0);
+      return () => window.clearTimeout(idleTimer);
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setPrices(current => ({ ...current, status: 'loading' }));
+      try {
+        const response = await fetch(`/api/offers?q=${encodeURIComponent(trimmedQuery)}`, { signal: controller.signal });
+        const data = await response.json() as { offers?: LivePrice[]; retailers?: RetailerConnection[] };
+        if (!response.ok) throw new Error('Price search failed');
+        setPrices({ status: 'ready', offers: data.offers ?? [], retailers: data.retailers ?? [] });
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          setPrices(current => ({ ...current, status: 'error', offers: [] }));
+        }
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query]);
+
+  return prices;
+}
+
+function milesBetween(from: [number, number], to: [number, number]) {
+  const radians = (value: number) => value * Math.PI / 180;
+  const earthRadiusMiles = 3958.8;
+  const latitudeDelta = radians(to[1] - from[1]);
+  const longitudeDelta = radians(to[0] - from[0]);
+  const calculation = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(radians(from[1])) * Math.cos(radians(to[1])) * Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(calculation), Math.sqrt(1 - calculation));
+}
+
+function nearestRetailerDistance(retailer: string) {
+  const normalized = retailer.toLowerCase();
+  const matchingStores = offers.filter(item => item.coordinates && item.store.toLowerCase().includes(normalized));
+  if (!matchingStores.length) return null;
+  return Math.min(...matchingStores.map(item => milesBetween(HOME, item.coordinates!)));
+}
+
 export default function Home() {
   const [tab, setTab] = useState<Tab>('Map');
   const [query, setQuery] = useState('Sony 55-inch TV');
@@ -133,7 +203,65 @@ export default function Home() {
   </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Real U.S. stores • Verified price feeds only</small></aside></main>;
 }
 
-function Search({ query, setQuery, open }: any) { return <section className="page search-page"><SearchBox value={query} setValue={setQuery} placeholder="What are you shopping for?"/><p className="label">RECENT SEARCH</p><button className="pill" onClick={open}>◷ Sony 55-inch TV</button><h2>Popular near you</h2><div className="categories">{[['▰','TVs'],['▱','Laptops'],['◉','Headphones'],['▣','Gaming']].map(x => <button key={x[1]} onClick={open}><b>{x[0]}</b><span>{x[1]}</span><i>›</i></button>)}</div><h2>Verified price search</h2><button className="trend" onClick={open}><i>LIVE</i><span><b>{query || 'Search a product'}</b><small>Official retailer data only</small><strong>Compare</strong><small>No estimated prices</small></span><em>›</em></button></section> }
+function Search({ query, setQuery, open }: any) {
+  const priceSearch = useVerifiedPriceSearch(String(query));
+  const [filters, setFilters] = useState<SearchFilters>(emptyFilters);
+  const [draft, setDraft] = useState<SearchFilters>(emptyFilters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const isSearching = String(query).trim().length >= 2;
+
+  const filteredOffers = useMemo(() => filterAndSortOffers(priceSearch.offers, filters, nearestRetailerDistance), [filters, priceSearch.offers]);
+
+  const appliedCount = [
+    filters.sort !== 'best', filters.maxPrice !== null, filters.maxDistance !== null,
+    filters.availability !== 'all', filters.fulfillment !== 'all', filters.retailers.length > 0,
+  ].filter(Boolean).length;
+  const beginFiltering = () => { setDraft(filters); setFiltersOpen(true); };
+
+  return <section className="page search-page">
+    <SearchBox value={query} setValue={setQuery} placeholder="What are you shopping for?"/>
+    {!isSearching ? <>
+      <p className="label">RECENT SEARCH</p><button className="pill" onClick={() => setQuery('Sony 55-inch TV')}>◷ Sony 55-inch TV</button>
+      <h2>Popular near you</h2><div className="categories">{[['▰','TVs'],['▱','Laptops'],['◉','Headphones'],['▣','Gaming']].map(x => <button key={x[1]} onClick={() => setQuery(x[1])}><b>{x[0]}</b><span>{x[1]}</span><i>›</i></button>)}</div>
+    </> : <>
+      <div className="search-filter-bar">
+        <button className="filter-main" onClick={beginFiltering}><span>☷</span> Filters {appliedCount > 0 && <b>{appliedCount}</b>}</button>
+        <button className={filters.fulfillment === 'pickup' ? 'active' : ''} onClick={() => setFilters(current => ({ ...current, fulfillment: current.fulfillment === 'pickup' ? 'all' : 'pickup' }))}>Pickup</button>
+        <button className={filters.availability === 'available' ? 'active' : ''} onClick={() => setFilters(current => ({ ...current, availability: current.availability === 'available' ? 'all' : 'available' }))}>In stock</button>
+        <button className={filters.maxPrice === 500 ? 'active' : ''} onClick={() => setFilters(current => ({ ...current, maxPrice: current.maxPrice === 500 ? null : 500 }))}>Under $500</button>
+      </div>
+      <div className="search-result-heading"><div><small>VERIFIED RETAILER RESULTS</small><h2>{priceSearch.status === 'loading' ? 'Searching…' : `${filteredOffers.length} results`}</h2></div><button onClick={beginFiltering}>{filters.sort === 'best' ? 'Best match' : filters.sort === 'price-low' ? 'Lowest price' : filters.sort === 'price-high' ? 'Highest price' : 'Nearest'}⌄</button></div>
+      {priceSearch.status === 'loading' && <div className="search-loading"><span/><b>Checking official price feeds</b><small>Prices are never estimated.</small></div>}
+      {priceSearch.status === 'error' && <div className="search-no-results"><b>Search is temporarily unavailable</b><span>Try again in a moment.</span></div>}
+      {priceSearch.status === 'ready' && filteredOffers.length > 0 && <div className="search-results">{filteredOffers.map(item => {
+        const distance = nearestRetailerDistance(item.retailer);
+        return <article key={item.id}><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3><span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><b>Official API</b></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
+      })}</div>}
+      {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(emptyFilters)}>Reset filters</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
+    </>}
+    {filtersOpen && <SearchFilterSheet
+      draft={draft}
+      setDraft={setDraft}
+      onClose={() => setFiltersOpen(false)}
+      onApply={() => { setFilters(draft); setFiltersOpen(false); }}
+    />}
+  </section>;
+}
+
+function SearchFilterSheet({ draft, setDraft, onClose, onApply }: { draft: SearchFilters; setDraft: (filters: SearchFilters) => void; onClose: () => void; onApply: () => void }) {
+  const retailerOptions = ['Best Buy', 'Walmart', 'Amazon', 'Target', 'Apple', 'Micro Center'];
+  const update = (change: Partial<SearchFilters>) => setDraft({ ...draft, ...change });
+  const toggleRetailer = (retailer: string) => update({ retailers: draft.retailers.includes(retailer) ? draft.retailers.filter(item => item !== retailer) : [...draft.retailers, retailer] });
+
+  return <div className="filter-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title"><div className="filter-sheet-head"><div><small>REFINE RESULTS</small><h2 id="filter-title">Search filters</h2></div><button onClick={onClose} aria-label="Close filters">×</button></div>
+    <label className="filter-field"><span>Sort results</span><select value={draft.sort} onChange={event => update({ sort: event.target.value as SearchFilters['sort'] })}><option value="best">Best match</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="distance">Distance: nearest first</option></select></label>
+    <div className="filter-grid"><label className="filter-field"><span>Maximum price</span><select value={draft.maxPrice ?? ''} onChange={event => update({ maxPrice: event.target.value ? Number(event.target.value) : null })}><option value="">Any price</option><option value="100">Under $100</option><option value="250">Under $250</option><option value="500">Under $500</option><option value="1000">Under $1,000</option><option value="2000">Under $2,000</option></select></label><label className="filter-field"><span>Store distance</span><select value={draft.maxDistance ?? ''} onChange={event => update({ maxDistance: event.target.value ? Number(event.target.value) : null })}><option value="">Any distance</option><option value="5">Within 5 miles</option><option value="10">Within 10 miles</option><option value="25">Within 25 miles</option><option value="50">Within 50 miles</option></select></label></div>
+    <fieldset><legend>Availability</legend><div className="filter-options">{[['all','Any availability'],['available','In stock only']].map(option => <button key={option[0]} className={draft.availability === option[0] ? 'selected' : ''} onClick={() => update({ availability: option[0] as SearchFilters['availability'] })}>{draft.availability === option[0] ? '✓ ' : ''}{option[1]}</button>)}</div></fieldset>
+    <fieldset><legend>Fulfillment</legend><div className="filter-options">{[['all','Any'],['pickup','Pickup'],['shipping','Shipping']].map(option => <button key={option[0]} className={draft.fulfillment === option[0] ? 'selected' : ''} onClick={() => update({ fulfillment: option[0] as SearchFilters['fulfillment'] })}>{draft.fulfillment === option[0] ? '✓ ' : ''}{option[1]}</button>)}</div></fieldset>
+    <fieldset><legend>Retailers</legend><div className="retailer-options">{retailerOptions.map(retailer => <button key={retailer} className={draft.retailers.includes(retailer) ? 'selected' : ''} onClick={() => toggleRetailer(retailer)}>{draft.retailers.includes(retailer) ? '✓ ' : ''}{retailer}</button>)}</div></fieldset>
+    <div className="filter-actions"><button onClick={() => setDraft(emptyFilters)}>Reset all</button><button className="apply" onClick={onApply}>Show results</button></div>
+  </section></div>;
+}
 function SearchBox({ value, setValue, placeholder }: any) { return <label className="searchbox"><b aria-hidden="true">⌕</b><input aria-label={placeholder || 'Search products'} value={value} onChange={e => setValue(e.target.value)} placeholder={placeholder}/></label> }
 type MapView = { radius: number; count: number };
 
@@ -382,35 +510,7 @@ function InteractiveMap({ offer, setOffer, view, setView }: { offer: Offer; setO
 
 function Map({ query, setQuery, offer, setOffer, notify }: any) {
   const [view, setView] = useState<MapView>({ radius: 20, count: 3 });
-  const [prices, setPrices] = useState<PriceSearch>({ status: 'idle', offers: [], retailers: [] });
-
-  useEffect(() => {
-    const trimmedQuery = String(query).trim();
-    if (trimmedQuery.length < 2) {
-      const idleTimer = window.setTimeout(() => setPrices({ status: 'idle', offers: [], retailers: [] }), 0);
-      return () => window.clearTimeout(idleTimer);
-    }
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      setPrices(current => ({ ...current, status: 'loading' }));
-      try {
-        const response = await fetch(`/api/offers?q=${encodeURIComponent(trimmedQuery)}`, { signal: controller.signal });
-        const data = await response.json() as { offers?: LivePrice[]; retailers?: RetailerConnection[] };
-        if (!response.ok) throw new Error('Price search failed');
-        setPrices({ status: 'ready', offers: data.offers ?? [], retailers: data.retailers ?? [] });
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          setPrices(current => ({ ...current, status: 'error', offers: [] }));
-        }
-      }
-    }, 450);
-
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query]);
+  const prices = useVerifiedPriceSearch(String(query));
 
   return <section className="page map-page">
     <div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="chips"><button className="on">☆ Verified prices</button><button>▣ Pickup today</button><button>⌖ ~{view.radius} mi view</button></div></div>
