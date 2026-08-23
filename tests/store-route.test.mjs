@@ -46,8 +46,8 @@ test('store endpoint fails over, caches a normalized area, and exposes no upstre
     }]);
     assert.equal(Object.hasOwn(payload, 'endpoint'), false);
     assert.equal(calls.length, 2);
-    assert.match(calls[0].url, /overpass\.private\.coffee/);
-    assert.match(calls[1].url, /overpass-api\.de/);
+    assert.match(calls[0].url, /maps\.mail\.ru/);
+    assert.match(calls[1].url, /overpass\.private\.coffee/);
     assert.match(String(calls[0].options.headers['User-Agent']), /DealRadar/);
 
     const cachedResponse = await GET(request);

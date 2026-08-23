@@ -21,6 +21,7 @@ test('the browser uses the controlled store endpoint before its continuity fallb
   ]);
   assert.match(clientPage, /fetch\(`\/api\/stores\?/);
   assert.match(clientPage, /if \(response\.ok\)/);
+  assert.match(storeRoute, /maps\.mail\.ru\/osm\/tools\/overpass\/api\/interpreter/);
   assert.match(storeRoute, /overpass\.private\.coffee\/api\/interpreter/);
   assert.match(storeRoute, /overpass-api\.de\/api\/interpreter/);
 });
