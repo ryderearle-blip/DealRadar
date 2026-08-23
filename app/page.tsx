@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, normalizeBarcode, toggleComparison, updatePriceHistory } from './search-logic';
 import { filterMappedStores, retailerMatchesStore, type MapStoreFilters } from './map-logic';
 import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedStores, toggleSavedProduct, toggleSavedStore as toggleSavedStoreRecord, type SavedProductRecord, type SavedSort, type SavedStoreRecord } from './saved-logic';
+import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch, parsePriceWatchSettings, setPriceWatchSetting, type PriceWatchSetting } from './alert-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -234,10 +235,14 @@ export default function Home() {
     <div className="status"><b>9:41</b><i/><span>▮▮▮ ))) ▰</span></div>
     <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => notify('Location set to 28086')}>● Kings Mountain, NC 28086⌄</button>}</div><button className="circle">{tab === 'Profile' ? '⚙' : '➤'}</button></header>
     <div className="content">
-      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} notify={notify}/>
+      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} notify={notify}/>}
       {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify}/>} 
-      {tab === 'Saved' && <Saved query={savedQuery} setQuery={setSavedQuery} notify={notify} shopProduct={(title: string) => { setQuery(title); setTab('Search'); }} browseStores={() => setTab('Map')} openStore={(store: SavedStoreRecord) => { setOffer({ ...store, price: null }); setTab('Map'); }}/>
-      {tab === 'Alerts' && <Alerts notify={notify}/>} 
+      {tab === 'Saved' && <Saved query={savedQuery} setQuery={setSavedQuery} notify={notify} shopProduct={(title: string) => { setQuery(title); setTab('Search'); }} browseStores={() => setTab('Map')} openStore={(store: SavedStoreRecord) => { setOffer({ ...store, price: null }); setTab('Map'); }}/>}
+      {tab === 'Alerts' && <Alerts
+        notify={notify}
+        openSaved={() => setTab('Saved')}
+        shopProduct={(title: string) => { setQuery(title); setTab('Search'); }}
+      />}
       {tab === 'Profile' && <Profile notify={notify}/>} 
     </div>
     <nav>{tabs.map(item => <button key={item} aria-label={`Open ${item} tab`} aria-current={tab === item ? 'page' : undefined} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}><b aria-hidden="true">{icons[item]}</b>{item}</button>)}</nav>
@@ -460,9 +465,27 @@ function PriceHistorySheet({ item, onClose }: { item: LivePrice; onClose: () => 
     const next = !alertOn;
     setAlertOn(next);
     window.localStorage.setItem(`dealradar-alert-${item.id}`, String(next));
+    if (next) {
+      const saved = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'));
+      if (!saved.some(product => product.id === item.id)) {
+        const record: SavedProductRecord = {
+          id: item.id,
+          title: item.title,
+          retailer: item.retailer,
+          price: item.price,
+          regularPrice: item.regularPrice,
+          availability: item.availability,
+          productUrl: item.productUrl,
+          modelNumber: item.modelNumber,
+          savedAt: new Date().toISOString(),
+          verifiedAt: item.updatedAt,
+        };
+        window.localStorage.setItem('dealradar-saved-products', JSON.stringify([record, ...saved]));
+      }
+    }
   };
 
-  return <div className="filter-backdrop history-backdrop" role="presentation"><section className="history-sheet" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="filter-sheet-head"><div><small>VERIFIED OBSERVATIONS</small><h2 id="history-title">Price history</h2></div><button onClick={onClose} aria-label="Close price history">×</button></div><h3>{item.title}</h3><div className="history-current"><span>Current official price</span><strong>${item.price.toFixed(2)}</strong></div>{history.length > 1 ? <><div className="history-chart" aria-label={`${history.length} saved price observations`}>{history.map((point, index) => <i key={`${point.recordedAt}-${index}`} style={{ height: `${24 + ((point.price - minimum) / spread) * 58}%` }} title={`${new Date(point.recordedAt).toLocaleDateString()}: $${point.price.toFixed(2)}`}/>)}</div><div className="history-range"><span>Low ${minimum.toFixed(2)}</span><span>High ${maximum.toFixed(2)}</span></div></> : <div className="history-empty"><b>First verified price saved</b><span>DealRadar will build this chart as official prices are observed over time.</span></div>}<button className={`history-alert ${alertOn ? 'active' : ''}`} onClick={toggleAlert}>{alertOn ? '✓ Price alert active' : '♧ Alert me when the price drops'}</button><p>History is recorded from connected official retailer feeds on this device. No past prices are invented.</p></section></div>;
+  return <div className="filter-backdrop history-backdrop" role="presentation"><section className="history-sheet" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="filter-sheet-head"><div><small>VERIFIED OBSERVATIONS</small><h2 id="history-title">Price history</h2></div><button onClick={onClose} aria-label="Close price history">×</button></div><h3>{item.title}</h3><div className="history-current"><span>Current official price</span><strong>${item.price.toFixed(2)}</strong></div>{history.length > 1 ? <><div className="history-chart" aria-label={`${history.length} saved price observations`}>{history.map((point, index) => <i key={`${point.recordedAt}-${index}`} style={{ height: `${24 + ((point.price - minimum) / spread) * 58}%` }} title={`${new Date(point.recordedAt).toLocaleDateString()}: $${point.price.toFixed(2)}`}/>)}</div><div className="history-range"><span>Low ${minimum.toFixed(2)}</span><span>High ${maximum.toFixed(2)}</span></div></> : <div className="history-empty"><b>First verified price saved</b><span>DealRadar will build this chart as official prices are observed over time.</span></div>}<button className={`history-alert ${alertOn ? 'active' : ''}`} onClick={toggleAlert}>{alertOn ? '✓ Price alert active' : '♧ Alert me when the price drops'}</button><p>Turning on an alert also saves this verified product. History is recorded from connected official retailer feeds on this device; no past prices are invented.</p></section></div>;
 }
 
 function SearchFilterSheet({ draft, setDraft, onClose, onApply }: { draft: SearchFilters; setDraft: (filters: SearchFilters) => void; onClose: () => void; onApply: () => void }) {
@@ -935,5 +958,122 @@ function Saved({ query, setQuery, notify, shopProduct, browseStores, openStore }
 function SavedEmpty({ filtered, type, clear, browse }: { filtered: boolean; type: 'products' | 'stores'; clear: () => void; browse: () => void }) {
   return <div className="saved-empty"><b>{filtered ? 'No saved matches' : `No saved ${type} yet`}</b><span>{filtered ? 'Try another search or clear the search box.' : type === 'products' ? 'Tap the heart on a verified Search result to keep it here.' : 'Tap the heart on a real Map location to keep it here.'}</span><button onClick={filtered ? clear : browse}>{filtered ? 'Clear search' : type === 'products' ? 'Find products' : 'Explore stores'}</button></div>;
 }
-function Alerts({ notify }: any) { return <section className="page"><h2>Price alerts</h2><article className="featured feed-waiting"><b>Verified alerts</b><h3>No confirmed price drops yet</h3><strong>Retailer connection needed</strong><p>DealRadar will only alert you using prices received from an approved retailer feed.</p><button onClick={() => notify('Retailer connection status opened')}>View connection status ›</button></article><h2 className="subhead">Watching</h2>{[['◉','Apple AirPods Pro'],['▣','Nintendo Switch OLED']].map(a => <button className="alert-row" key={a[1]}><i>{a[0]}</i><b>{a[1]}<small>Waiting for a verified price</small></b><span>›</span></button>)}</section> }
+type AlertCheckState = {
+  status: 'idle' | 'checking' | 'ready' | 'error';
+  offers: Record<string, LivePrice | null>;
+  checkedAt: string | null;
+};
+
+function Alerts({ notify, openSaved, shopProduct }: { notify: (message: string) => void; openSaved: () => void; shopProduct: (title: string) => void }) {
+  const [products, setProducts] = useState<SavedProductRecord[]>([]);
+  const [settings, setSettings] = useState<PriceWatchSetting[]>([]);
+  const [check, setCheck] = useState<AlertCheckState>({ status: 'idle', offers: {}, checkedAt: null });
+  const [editing, setEditing] = useState<SavedProductRecord | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const saved = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'));
+      const watched = saved.filter(item => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true');
+      const nextSettings = ensurePriceWatchSettings(watched, parsePriceWatchSettings(window.localStorage.getItem('dealradar-alert-settings')), new Date().toISOString());
+      setProducts(watched);
+      setSettings(nextSettings);
+      window.localStorage.setItem('dealradar-alert-settings', JSON.stringify(nextSettings));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const checkFeeds = async () => {
+    if (!products.length || check.status === 'checking') return;
+    setCheck(current => ({ ...current, status: 'checking' }));
+    try {
+      const entries = await Promise.all(products.map(async product => {
+        try {
+          const response = await fetch(`/api/offers?q=${encodeURIComponent(product.modelNumber || product.title)}`);
+          if (!response.ok) return [product.id, null] as const;
+          const data = await response.json() as { offers?: LivePrice[] };
+          const current = chooseVerifiedAlertOffer(product, data.offers ?? []) as LivePrice | null;
+          if (current) recordVerifiedPriceHistory([current]);
+          return [product.id, current] as const;
+        } catch {
+          return [product.id, null] as const;
+        }
+      }));
+      const checkedAt = new Date().toISOString();
+      const nextSettings = settings.map(item => ({ ...item, lastCheckedAt: checkedAt }));
+      const nextOffers = Object.fromEntries(entries);
+      const triggered = products.filter(product => {
+        const setting = nextSettings.find(item => item.productId === product.id);
+        return setting && evaluatePriceWatch(product, nextOffers[product.id], setting).status === 'triggered';
+      }).length;
+      setSettings(nextSettings);
+      setCheck({ status: 'ready', offers: nextOffers, checkedAt });
+      window.localStorage.setItem('dealradar-alert-settings', JSON.stringify(nextSettings));
+      notify(triggered ? `${triggered} verified ${triggered === 1 ? 'deal' : 'deals'} found` : 'Verified price check complete');
+    } catch {
+      setCheck(current => ({ ...current, status: 'error' }));
+    }
+  };
+
+  const disableWatch = (product: SavedProductRecord) => {
+    const nextProducts = products.filter(item => item.id !== product.id);
+    const nextSettings = settings.filter(item => item.productId !== product.id);
+    setProducts(nextProducts);
+    setSettings(nextSettings);
+    window.localStorage.setItem(`dealradar-alert-${product.id}`, 'false');
+    window.localStorage.setItem('dealradar-alert-settings', JSON.stringify(nextSettings));
+    notify(`Price watch turned off for ${product.title}`);
+  };
+  const saveSetting = (next: PriceWatchSetting) => {
+    const nextSettings = setPriceWatchSetting(settings, next);
+    setSettings(nextSettings);
+    window.localStorage.setItem('dealradar-alert-settings', JSON.stringify(nextSettings));
+    setEditing(null);
+    notify('Price-watch settings saved');
+  };
+
+  const evaluations = products.map(product => {
+    const setting = settings.find(item => item.productId === product.id) ?? ensurePriceWatchSettings([product], [], new Date().toISOString())[0];
+    const current = check.offers[product.id] ?? null;
+    return { product, setting, current, evaluation: evaluatePriceWatch(product, current, setting) };
+  });
+  const triggeredCount = check.status === 'ready' ? evaluations.filter(item => item.evaluation.status === 'triggered').length : 0;
+
+  return <section className="page alerts-page">
+    <div className="alerts-title"><div><small>VERIFIED RETAILER MONITORING</small><h2>Price alerts</h2></div><span>{products.length} active</span></div>
+    {products.length === 0 ? <div className="alerts-empty"><b>♧</b><h3>No active price watches</h3><p>Save a verified product, then turn on Watch price to monitor it here.</p><button onClick={openSaved}>Open Saved products</button></div> : <>
+      <article className={`alert-summary ${triggeredCount ? 'has-deals' : ''}`}><div><b>{triggeredCount ? '✓' : '♧'}</b><span><small>{triggeredCount ? 'VERIFIED DEAL FOUND' : 'PRICE WATCHES READY'}</small><h3>{triggeredCount ? `${triggeredCount} ${triggeredCount === 1 ? 'price drop meets' : 'price drops meet'} your target` : `${products.length} ${products.length === 1 ? 'product' : 'products'} being watched`}</h3><p>{check.checkedAt ? `Last checked ${new Date(check.checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Check connected feeds for the latest official prices.'}</p></span></div><button disabled={check.status === 'checking'} onClick={checkFeeds}>{check.status === 'checking' ? 'Checking official feeds…' : 'Check verified feeds'}</button><small>Checks use official retailer results only while this prototype is open. DealRadar never invents a price drop.</small></article>
+      {check.status === 'error' && <div className="alert-check-error">Price feeds could not be checked. Try again in a moment.</div>}
+      <div className="alerts-list-head"><h3>Watching</h3><span>{products.length} active</span></div>
+      <div className="watch-list">{evaluations.map(({ product, setting, current, evaluation }) => {
+        const ready = check.status === 'ready';
+        const targetLabel = setting.targetPrice === null ? 'Any verified drop' : `$${setting.targetPrice.toFixed(2)} or less`;
+        return <article key={product.id} className={ready && evaluation.status === 'triggered' ? 'triggered' : ''}><div className="watch-brand">{product.retailer === 'Best Buy' ? 'BEST' : product.retailer.slice(0, 2).toUpperCase()}</div><div className="watch-copy"><small>{product.retailer} · {targetLabel}</small><h3>{product.title}</h3><div className="watch-prices"><span><small>Saved at</small><b>${product.price.toFixed(2)}</b></span><i>→</i><span><small>Latest verified</small><b>{ready && current ? `$${current.price.toFixed(2)}` : '—'}</b></span></div><p className={`watch-state ${ready ? evaluation.status : 'idle'}`}>{check.status === 'checking' ? 'Checking retailer feed…' : !ready ? 'Ready for a verified check' : evaluation.status === 'triggered' ? `Target met${evaluation.savings ? ` · Save $${evaluation.savings.toFixed(2)}` : ' · Back in stock'}` : evaluation.status === 'unavailable' ? 'No exact verified match returned' : 'Watching · Target not reached'}</p><div className="watch-actions"><button onClick={() => setEditing(product)}>Adjust target</button><button onClick={() => shopProduct(product.title)}>Search product</button>{current ? <a href={current.productUrl} target="_blank" rel="noreferrer">View deal ›</a> : <a href={product.productUrl} target="_blank" rel="noreferrer">Saved deal ›</a>}</div></div><button className="watch-menu" onClick={() => disableWatch(product)} aria-label={`Turn off price watch for ${product.title}`}>×</button></article>;
+      })}</div>
+    </>}
+    {editing && <PriceWatchSheet
+      product={editing}
+      setting={settings.find(item => item.productId === editing.id) ?? ensurePriceWatchSettings([editing], [], new Date().toISOString())[0]}
+      onClose={() => setEditing(null)}
+      onSave={saveSetting}
+    />}
+  </section>;
+}
+
+function PriceWatchSheet({ product, setting, onClose, onSave }: { product: SavedProductRecord; setting: PriceWatchSetting; onClose: () => void; onSave: (setting: PriceWatchSetting) => void }) {
+  const fivePercent = Number((product.price * .95).toFixed(2));
+  const tenPercent = Number((product.price * .90).toFixed(2));
+  const initialMode = setting.targetPrice === null ? 'any' : setting.targetPrice === fivePercent ? 'five' : setting.targetPrice === tenPercent ? 'ten' : 'custom';
+  const [mode, setMode] = useState<'any' | 'five' | 'ten' | 'custom'>(initialMode);
+  const [custom, setCustom] = useState(setting.targetPrice === null ? '' : setting.targetPrice.toFixed(2));
+  const [backInStock, setBackInStock] = useState(setting.backInStock);
+  const customPrice = Number(custom);
+  const validCustom = mode !== 'custom' || (Number.isFinite(customPrice) && customPrice > 0 && customPrice < product.price);
+  const submit = () => {
+    if (!validCustom) return;
+    const targetPrice = mode === 'any' ? null : mode === 'five' ? fivePercent : mode === 'ten' ? tenPercent : Number(customPrice.toFixed(2));
+    onSave({ ...setting, targetPrice, backInStock });
+  };
+
+  return <div className="filter-backdrop watch-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="watch-sheet" role="dialog" aria-modal="true" aria-labelledby="watch-settings-title"><div className="filter-sheet-head"><div><small>VERIFIED PRICE WATCH</small><h2 id="watch-settings-title">Set your target</h2></div><button onClick={onClose} aria-label="Close price-watch settings">×</button></div><h3>{product.title}</h3><p>Saved verified price <b>${product.price.toFixed(2)}</b></p><div className="watch-targets"><button className={mode === 'any' ? 'selected' : ''} onClick={() => setMode('any')}>Any drop<small>Below ${product.price.toFixed(2)}</small></button><button className={mode === 'five' ? 'selected' : ''} onClick={() => setMode('five')}>5% off<small>${fivePercent.toFixed(2)}</small></button><button className={mode === 'ten' ? 'selected' : ''} onClick={() => setMode('ten')}>10% off<small>${tenPercent.toFixed(2)}</small></button><button className={mode === 'custom' ? 'selected' : ''} onClick={() => setMode('custom')}>Custom<small>Your price</small></button></div>{mode === 'custom' && <label className="custom-target"><span>Notify me at or below</span><div>$ <input inputMode="decimal" value={custom} onChange={event => setCustom(event.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00"/></div>{!validCustom && <small>Enter a price below ${product.price.toFixed(2)}.</small>}</label>}<label className="stock-watch"><span><b>Back-in-stock alert</b><small>Notify when an official feed reports it available again.</small></span><input type="checkbox" checked={backInStock} onChange={event => setBackInStock(event.target.checked)}/><i/></label><button className="save-watch" disabled={!validCustom} onClick={submit}>Save watch settings</button><small className="watch-disclaimer">Alerts are evaluated only when DealRadar receives a matching official retailer price.</small></section></div>;
+}
 function Profile({ notify }: any) { const [a,setA]=useState(true); const [b,setB]=useState(true); return <section className="page"><h2>Profile</h2><article className="identity"><i>JD</i><span><h3>Jordan Davis</h3><button onClick={() => notify('Edit profile selected')}>Edit profile ›</button></span></article><h3 className="section-title">Shopping preferences</h3><div className="settings">{[['●','Home location','Kings Mountain, NC 28086'],['⌾','Search radius','10 miles'],['▣','Preferred fulfillment','Pickup & delivery']].map(x => <button key={x[1]}><i>{x[0]}</i><span><b>{x[1]}</b><small>{x[2]}</small></span><em>›</em></button>)}</div><h3 className="section-title">Notifications</h3><div className="settings toggles"><label><i>♧</i><b>Price-drop alerts</b><input type="checkbox" checked={a} onChange={e=>setA(e.target.checked)}/><span/></label><label><i>▣</i><b>Back-in-stock alerts</b><input type="checkbox" checked={b} onChange={e=>setB(e.target.checked)}/><span/></label></div><button className="privacy">♢ <b>Privacy & data</b><span>›</span></button></section> }

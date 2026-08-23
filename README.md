@@ -42,3 +42,10 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Search and sorting for saved products and real store locations
 - Verified-price watches, product re-search, retailer links, and store directions
 - Immediate removal controls and honest empty states instead of placeholder deals
+
+## Alert features
+
+- Price watches created from Saved or verified price history
+- Manual checks against exact product matches from connected official feeds
+- Any-drop, 5%, 10%, and custom target prices plus back-in-stock monitoring
+- Latest verified-price comparison, clear match status, and editable watch settings
