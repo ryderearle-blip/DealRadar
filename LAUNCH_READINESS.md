@@ -43,7 +43,8 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 - [x] Keep incomplete totals below complete totals when sorting by estimated total cost
 - [x] Recommend only fresh exact matches with complete costs, and require confirmed pickup before a local option can win
 - [x] Device-local export and confirmed shopping-data clearing
-- [ ] Publish Terms of Use, Privacy Policy, affiliate disclosures, and data-retention policy
+- [x] Publish private pre-launch Terms of Use, Privacy Policy, affiliate disclosure, and device-local retention explanation
+- [ ] Have qualified counsel review the policies, confirm the operating entity and governing law, and activate the listed legal/privacy/partner mailboxes before public launch
 - [x] Audit all locked dependencies in CI and apply baseline browser security headers
 - [x] Add baseline per-client request limits to upstream-backed API routes
 - [ ] Complete an external security review, secret rotation plan, and distributed abuse protection

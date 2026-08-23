@@ -63,6 +63,15 @@
 .profile-tour > span small { margin-top: 2px; color: var(--muted); font-size: 8px; }
 .profile-tour > em { color: var(--green); font-size: 17px; font-style: normal; }
 .profile-device-note { margin: 11px 8px 0; color: var(--muted); font-size: 8px; line-height: 1.45; text-align: center; }
+.profile-legal-links { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: #fff; }
+.profile-legal-links > a { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); padding: 11px 12px; color: var(--ink); text-decoration: none; }
+.profile-legal-links > a:last-child { border-bottom: 0; }
+.profile-legal-links i { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; background: #edf4ff; color: var(--blue); font-style: normal; font-weight: 850; }
+.profile-legal-links span b,.profile-legal-links span small { display: block; }
+.profile-legal-links span b { font-size: 10px; }
+.profile-legal-links span small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.profile-legal-links em { color: var(--green); font-size: 18px; font-style: normal; }
+.profile-policy-link { display: block; margin-top: 11px; color: var(--blue); font-size: 9px; font-weight: 800; text-align: center; text-decoration: none; }
 
 .profile-sheet { width: 100%; max-height: calc(100% - 55px); overflow-y: auto; border-radius: 28px 28px 0 0; padding: 12px 21px max(22px,env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -14px 40px #10203625; }
 .profile-sheet::before { content: ''; display: block; width: 42px; height: 5px; margin: 0 auto 10px; border-radius: 4px; background: #aab4bd; }

@@ -63,6 +63,7 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Home-centered map, location-based distance estimates, and configurable shopping radius
 - Default pickup or shipping preference applied to Search
 - Notification preferences plus DealRadar data export and confirmed shopping-data clearing
+- Direct access to the Privacy Policy, Terms of Use, and Affiliate Disclosure from Profile
 
 ## First-run and mobile experience
 
