@@ -76,6 +76,17 @@
 .profile-save { width: 100%; min-height: 43px; margin-top: 14px; border: 0; border-radius: 17px; background: var(--green); color: #fff; font-size: 10px; font-weight: 850; }
 .profile-save:disabled { background: #aab5bd; }
 .profile-sheet-note { display: block; margin-top: 9px; color: var(--muted); font-size: 8px; line-height: 1.4; text-align: center; }
+.profile-device-location { width: 100%; display: grid; grid-template-columns: 36px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid #bfd6f2; border-radius: 16px; padding: 11px; background: #f3f8ff; color: var(--ink); text-align: left; }
+.profile-device-location > i { width: 36px; height: 36px; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50%; background: var(--blue); color: #fff; box-shadow: 0 0 0 5px #0d70e817; font-size: 18px; font-style: normal; }
+.profile-device-location span b,
+.profile-device-location span small { display: block; }
+.profile-device-location span b { font-size: 10px; }
+.profile-device-location span small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.profile-device-location > em { color: var(--blue); font-size: 8px; font-style: normal; font-weight: 800; }
+.profile-device-location:disabled { opacity: .7; }
+.profile-location-divider { display: flex; align-items: center; gap: 9px; margin: 14px 0; color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .05em; }
+.profile-location-divider::before,
+.profile-location-divider::after { content: ''; height: 1px; flex: 1; background: var(--line); }
 .profile-choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .profile-choice-grid button { min-height: 45px; border: 1px solid var(--line); border-radius: 14px; background: #fff; color: #435064; font-size: 10px; font-weight: 750; }
 .profile-choice-grid button.selected { border-color: var(--green); background: #edf9f1; color: var(--green); }

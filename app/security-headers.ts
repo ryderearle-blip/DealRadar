@@ -24,7 +24,7 @@ export function securityHeaders(development = false) {
   return {
     'Content-Security-Policy': buildContentSecurityPolicy(development),
     'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-    'Permissions-Policy': 'camera=(self), geolocation=(), microphone=(), payment=()',
+    'Permissions-Policy': 'camera=(self), geolocation=(self), microphone=(), payment=()',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'X-Content-Type-Options': 'nosniff',

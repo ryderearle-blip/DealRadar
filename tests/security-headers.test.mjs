@@ -18,12 +18,12 @@ test('production policy denies framing and permits only required map services', 
   assert.doesNotMatch(developmentPolicy, /upgrade-insecure-requests/);
 });
 
-test('security headers retain barcode camera access while disabling unrelated sensors', () => {
+test('security headers retain same-origin camera and location access while disabling unrelated sensors', () => {
   const expected = securityHeaders(false);
   const headers = applySecurityHeaders(new Headers(), false);
   assert.equal(headers.get('Content-Security-Policy'), expected['Content-Security-Policy']);
   assert.equal(headers.get('X-Frame-Options'), 'DENY');
   assert.equal(headers.get('X-Content-Type-Options'), 'nosniff');
   assert.equal(headers.get('Referrer-Policy'), 'strict-origin-when-cross-origin');
-  assert.equal(headers.get('Permissions-Policy'), 'camera=(self), geolocation=(), microphone=(), payment=()');
+  assert.equal(headers.get('Permissions-Policy'), 'camera=(self), geolocation=(self), microphone=(), payment=()');
 });

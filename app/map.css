@@ -149,6 +149,8 @@
 }
 
 .map-home-marker span { font-size: 16px; line-height: 1; }
+.map-home-marker.precise { width: 22px; height: 22px; border-width: 4px; box-shadow: 0 0 0 9px #0d70e82e, 0 4px 12px #172b3c33; }
+.map-home-marker.precise span { font-size: 19px; line-height: 1; }
 
 .price-marker {
   position: relative;

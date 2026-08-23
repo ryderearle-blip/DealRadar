@@ -5,7 +5,7 @@ import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortO
 import { appleMapsDirectionsUrl, filterMappedStores, googleMapsDirectionsUrl, milesBetween, retailerMatchesStore, storeDistanceLabel, type MapStoreFilters } from './map-logic';
 import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedStores, toggleSavedProduct, toggleSavedStore as toggleSavedStoreRecord, type SavedProductRecord, type SavedSort, type SavedStoreRecord } from './saved-logic';
 import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch, parsePriceWatchSettings, setPriceWatchSetting, type PriceWatchSetting } from './alert-logic';
-import { defaultProfilePreferences, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences } from './profile-logic';
+import { defaultProfilePreferences, deviceShoppingLocation, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences, type ShoppingLocation } from './profile-logic';
 import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './onboarding-logic';
 import type { RetailerStatus } from './retailer-connections';
 import { buildStoreDiscoveryQuery, buildStoreDiscoveryWindows, parseStoreLocations, sampleStoreLocations, type OpenStreetMapElement, type StoreBounds, type StoreLocation } from './store-discovery';
@@ -385,7 +385,7 @@ function Onboarding({ preferences, onFinish, onUseDefaults }: { preferences: Pro
   const [zip, setZip] = useState(preferences.zipCode);
   const [radius, setRadius] = useState<ProfilePreferences['searchRadius']>(preferences.searchRadius);
   const [fulfillment, setFulfillment] = useState<ProfilePreferences['fulfillment']>(preferences.fulfillment);
-  const [resolvedLocation, setResolvedLocation] = useState<Pick<ProfilePreferences, 'zipCode' | 'locationLabel' | 'coordinates'>>({ zipCode: preferences.zipCode, locationLabel: preferences.locationLabel, coordinates: preferences.coordinates });
+  const [resolvedLocation, setResolvedLocation] = useState<ShoppingLocation>({ zipCode: preferences.zipCode, locationLabel: preferences.locationLabel, coordinates: preferences.coordinates, locationPrecision: preferences.locationPrecision });
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const continueFromLocation = async () => {
     if (locationStatus === 'loading') return;
@@ -742,7 +742,7 @@ function MapDataAttribution({ list = false }: { list?: boolean }) {
   return <div className={`map-data-attribution${list ? ' list-attribution' : ''}`} aria-label="Map data attribution"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a><span>·</span><a href="https://openfreemap.org/" target="_blank" rel="noreferrer">Tiles by OpenFreeMap</a></div>;
 }
 
-function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetailers, onVisibleStores, active, focusRequest, home }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void; filters: MapStoreFilters; verifiedRetailers: string[]; onVisibleStores: (stores: Offer[]) => void; active: boolean; focusRequest: MapFocusRequest; home: [number, number] }) {
+function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetailers, onVisibleStores, active, focusRequest, home, homePrecision }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void; filters: MapStoreFilters; verifiedRetailers: string[]; onVisibleStores: (stores: Offer[]) => void; active: boolean; focusRequest: MapFocusRequest; home: [number, number]; homePrecision: ProfilePreferences['locationPrecision'] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const selectedOfferRef = useRef(offer);
@@ -808,9 +808,9 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       activeMap.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: 'imperial' }), 'bottom-left');
 
       const homeMarker = document.createElement('div');
-      homeMarker.className = 'map-home-marker';
-      homeMarker.setAttribute('aria-label', 'Saved home area');
-      homeMarker.innerHTML = '<span>⌂</span>';
+      homeMarker.className = `map-home-marker${homePrecision === 'device' ? ' precise' : ''}`;
+      homeMarker.setAttribute('aria-label', homePrecision === 'device' ? 'Precise device distance origin' : 'Saved ZIP-center distance origin');
+      homeMarker.innerHTML = `<span>${homePrecision === 'device' ? '•' : '⌂'}</span>`;
       markers.push({ marker: new maplibregl.Marker({ element: homeMarker, anchor: 'center' }).setLngLat(home).addTo(activeMap), element: homeMarker });
 
       const createOfferMarker = (item: Offer, live = false) => {
@@ -1026,7 +1026,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       visibilityUpdaterRef.current = () => undefined;
       refreshStoresRef.current = () => undefined;
     };
-  }, [home, setOffer, setView]);
+  }, [home, homePrecision, setOffer, setView]);
 
   useEffect(() => {
     containerRef.current?.querySelectorAll<HTMLElement>('.price-marker').forEach(marker => {
@@ -1041,7 +1041,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
     {status === 'loading' && <div className="map-loading"><span />Loading detailed map…</div>}
     {status === 'error' && <div className="map-loading map-error">Map unavailable. Check your connection.</div>}
     <div className="map-guide">Drag to explore · Scroll or pinch to zoom</div>
-    <button className="recenter" onClick={recenter} aria-label="Recenter map on nearby deals">⌖ <span>Recenter</span></button>
+    <button className="recenter" onClick={recenter} aria-label={`Recenter map on ${homePrecision === 'device' ? 'device location' : 'saved ZIP area'}`}>⌖ <span>Recenter</span></button>
     {discoveryError
       ? <button className="sample-badge store-retry" onClick={() => refreshStoresRef.current()}><b>Store search paused</b><span>Tap to retry real locations</span></button>
       : <div className={`sample-badge ${refreshing ? 'refreshing' : ''}`}><b>{refreshing ? 'Searching area…' : needsZoom ? `${view.count} representative stores` : `${view.count} real stores`}</b><span>{refreshing ? 'Checking mapped retailers' : needsZoom ? 'Zoom in for denser real locations' : 'U.S. mapped locations only'}</span></div>}
@@ -1114,7 +1114,7 @@ function Map({ query, setQuery, offer, setOffer, notify, preferences, onCheckInv
 
   return <section className="page map-page">
     <div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="map-control-row"><div className="chips"><button className={mapFilters.verifiedOnly ? 'on' : ''} onClick={() => setMapFilters(current => ({ ...current, verifiedOnly: !current.verifiedOnly }))}>✓ Price connected</button><button className={mapFilters.withinMiles === preferences.searchRadius ? 'on' : ''} onClick={() => setMapFilters(current => ({ ...current, withinMiles: current.withinMiles === preferences.searchRadius ? null : preferences.searchRadius }))}>⌖ Within {preferences.searchRadius} mi</button><button disabled>~{view.radius} mi view</button></div><div className="map-list-toggle" role="group" aria-label="Show map or store list"><button className={display === 'map' ? 'active' : ''} onClick={() => setDisplay('map')}>Map</button><button className={display === 'list' ? 'active' : ''} onClick={() => setDisplay('list')}>List {visibleStores.length}</button></div></div></div>
-    <div className={display === 'map' ? 'map-display active' : 'map-display'}><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView} filters={mapFilters} verifiedRetailers={verifiedRetailers} onVisibleStores={receiveVisibleStores} active={display === 'map'} focusRequest={focusRequest} home={preferences.coordinates}/></div>
+    <div className={display === 'map' ? 'map-display active' : 'map-display'}><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView} filters={mapFilters} verifiedRetailers={verifiedRetailers} onVisibleStores={receiveVisibleStores} active={display === 'map'} focusRequest={focusRequest} home={preferences.coordinates} homePrecision={preferences.locationPrecision}/></div>
     {display === 'list' && <MapStoreList
       stores={visibleStores}
       selected={offer}
@@ -1384,7 +1384,7 @@ function Profile({ preferences, setPreferences, notify, restartOnboarding }: { p
   return <section className="page profile-page">
     <div className="profile-title"><div><small>SHOPPING SETUP</small><h2>Profile</h2></div><span>Saved on device</span></div>
     <article className="profile-identity"><i>{profileInitials(preferences.name)}</i><span><small>DEALRADAR SHOPPER</small><h3>{preferences.name}</h3><button onClick={() => setPanel('name')}>Edit display name ›</button></span><b>✓</b></article>
-    <div className="profile-home-card"><span>⌂</span><div><small>HOME SHOPPING AREA</small><b>{preferences.locationLabel}</b><em>{preferences.zipCode} · United States</em></div><button onClick={() => setPanel('location')}>Change</button></div>
+    <div className="profile-home-card"><span>{preferences.locationPrecision === 'device' ? '●' : '⌂'}</span><div><small>{preferences.locationPrecision === 'device' ? 'PRECISE DISTANCE ORIGIN' : 'HOME SHOPPING AREA'}</small><b>{preferences.locationLabel}</b><em>{preferences.zipCode} · {preferences.locationPrecision === 'device' ? 'Device location' : 'ZIP-center origin'}</em></div><button onClick={() => setPanel('location')}>Change</button></div>
     <RetailerConnectionCard onOpen={() => setPanel('connections')}/>
     <div className="profile-section-head"><h3>Shopping preferences</h3><small>Used in Search and Map</small></div>
     <div className="profile-settings shopping-settings"><button onClick={() => setPanel('radius')}><i>⌾</i><span><b>Shopping radius</b><small>Default Search distance and Map quick filter</small></span><em>{preferences.searchRadius} mi ›</em></button><button onClick={() => setPanel('fulfillment')}><i>▣</i><span><b>Preferred fulfillment</b><small>Sets the starting Search filter</small></span><em>{fulfillmentLabel(preferences.fulfillment)} ›</em></button><button onClick={() => setPanel('costs')}><i>$</i><span><b>Cost assumptions</b><small>Tax and driving estimates for total cost</small></span><em>{preferences.salesTaxPercent.toFixed(2)}% · ${preferences.travelCostPerMile.toFixed(2)}/mi ›</em></button></div>
@@ -1399,7 +1399,7 @@ function Profile({ preferences, setPreferences, notify, restartOnboarding }: { p
       onSave={name => { update({ name }, 'Display name updated'); setPanel(null); }}
     />}
     {panel === 'location' && <LocationProfileSheet
-      currentZip={preferences.zipCode}
+      current={{ zipCode: preferences.zipCode, locationLabel: preferences.locationLabel, coordinates: preferences.coordinates, locationPrecision: preferences.locationPrecision }}
       onClose={() => setPanel(null)}
       onSave={location => { update(location, `Home area changed to ${location.locationLabel}`); setPanel(null); }}
     />}
@@ -1490,20 +1490,31 @@ function NameProfileSheet({ current, onClose, onSave }: { current: string; onClo
   return <ProfileSheetFrame eyebrow="PROFILE" title="Display name" onClose={onClose}><label className="profile-field"><span>Name shown in DealRadar</span><input autoFocus data-dialog-initial-focus maxLength={40} value={name} onChange={event => setName(event.target.value)} placeholder="Your name"/></label><button className="profile-save" disabled={!valid} onClick={() => valid && onSave(name.trim())}>Save name</button></ProfileSheetFrame>;
 }
 
-function LocationProfileSheet({ currentZip, onClose, onSave }: { currentZip: string; onClose: () => void; onSave: (location: Pick<ProfilePreferences, 'zipCode' | 'locationLabel' | 'coordinates'>) => void }) {
-  const [zip, setZip] = useState(currentZip);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
-  const save = async () => {
+function LocationProfileSheet({ current, onClose, onSave }: { current: ShoppingLocation; onClose: () => void; onSave: (location: ShoppingLocation) => void }) {
+  const [zip, setZip] = useState(current.zipCode);
+  const [status, setStatus] = useState<'idle' | 'zip-loading' | 'locating' | 'zip-error' | 'location-error'>('idle');
+  const saveZip = async () => {
     const normalized = normalizeUsZip(zip);
-    if (!normalized || status === 'loading') { setStatus('error'); return; }
-    setStatus('loading');
+    if (!normalized || status === 'zip-loading') { setStatus('zip-error'); return; }
+    setStatus('zip-loading');
     try {
       onSave(await lookupUsZip(normalized));
     } catch {
-      setStatus('error');
+      setStatus('zip-error');
     }
   };
-  return <ProfileSheetFrame eyebrow="UNITED STATES" title="Home shopping area" onClose={onClose}><p className="profile-sheet-copy">Your ZIP sets the map center and drives local distance estimates. The exact street address is not requested.</p><label className="profile-field"><span>5-digit ZIP code</span><input autoFocus data-dialog-initial-focus inputMode="numeric" value={zip} onChange={event => { setZip(event.target.value.replace(/\D/g, '').slice(0, 5)); setStatus('idle'); }} placeholder="28086"/></label>{status === 'error' && <p className="profile-field-error">Enter a valid U.S. ZIP code and try again.</p>}<button className="profile-save" disabled={zip.length !== 5 || status === 'loading'} onClick={save}>{status === 'loading' ? 'Finding ZIP…' : 'Use this home area'}</button><small className="profile-sheet-note">ZIP lookup uses the public Zippopotam.us postal service.</small></ProfileSheetFrame>;
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) { setStatus('location-error'); return; }
+    setStatus('locating');
+    navigator.geolocation.getCurrentPosition(position => {
+      try {
+        onSave(deviceShoppingLocation(position.coords.longitude, position.coords.latitude, current));
+      } catch {
+        setStatus('location-error');
+      }
+    }, () => setStatus('location-error'), { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 });
+  };
+  return <ProfileSheetFrame eyebrow="UNITED STATES" title="Distance origin" onClose={onClose}><p className="profile-sheet-copy">Choose how DealRadar measures store distance and driving cost. Your retailer-inventory area remains ZIP {current.zipCode}.</p><button autoFocus data-dialog-initial-focus className="profile-device-location" disabled={status === 'locating'} onClick={useCurrentLocation}><i>●</i><span><b>{status === 'locating' ? 'Finding your location…' : 'Use current device location'}</b><small>More precise distance and trip-cost estimates</small></span><em>{current.locationPrecision === 'device' ? 'Active ✓' : 'Use ›'}</em></button>{status === 'location-error' && <p className="profile-field-error">Location could not be used. Allow location access and make sure you are within the U.S., or use a ZIP-center origin below.</p>}<div className="profile-location-divider"><span>or use ZIP center</span></div><label className="profile-field"><span>5-digit ZIP code</span><input inputMode="numeric" value={zip} onChange={event => { setZip(event.target.value.replace(/\D/g, '').slice(0, 5)); setStatus('idle'); }} placeholder="28086"/></label>{status === 'zip-error' && <p className="profile-field-error">Enter a valid U.S. ZIP code and try again.</p>}<button className="profile-save" disabled={zip.length !== 5 || status === 'zip-loading' || status === 'locating'} onClick={saveZip}>{status === 'zip-loading' ? 'Finding ZIP…' : 'Use ZIP-center origin'}</button><small className="profile-sheet-note">Precise coordinates are saved in this browser and can be cleared under Privacy. Map providers receive the area you view; retailer inventory receives only your ZIP. ZIP lookup uses Zippopotam.us.</small></ProfileSheetFrame>;
 }
 
 function RadiusProfileSheet({ current, onClose, onSave }: { current: ProfilePreferences['searchRadius']; onClose: () => void; onSave: (radius: ProfilePreferences['searchRadius']) => void }) {

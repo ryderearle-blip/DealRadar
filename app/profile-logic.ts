@@ -5,6 +5,7 @@ export type ProfilePreferences = {
   zipCode: string;
   locationLabel: string;
   coordinates: [number, number];
+  locationPrecision: 'zip' | 'device';
   searchRadius: 5 | 10 | 25 | 50 | 100;
   fulfillment: FulfillmentPreference;
   salesTaxPercent: number;
@@ -18,6 +19,7 @@ export const defaultProfilePreferences: ProfilePreferences = {
   zipCode: '28086',
   locationLabel: 'Kings Mountain, NC',
   coordinates: [-81.3806, 35.2516],
+  locationPrecision: 'zip',
   searchRadius: 25,
   fulfillment: 'both',
   salesTaxPercent: 6.75,
@@ -42,18 +44,18 @@ export function normalizeUsZip(value: string) {
 export function parseProfilePreferences(raw: string | null): ProfilePreferences {
   try {
     const parsed = JSON.parse(raw ?? '{}');
-    const coordinates = Array.isArray(parsed.coordinates)
+    const hasValidCoordinates = Array.isArray(parsed.coordinates)
       && parsed.coordinates.length === 2
       && parsed.coordinates.every(Number.isFinite)
       && parsed.coordinates[0] >= -171 && parsed.coordinates[0] <= -66
-      && parsed.coordinates[1] >= 18 && parsed.coordinates[1] <= 72
-      ? parsed.coordinates as [number, number]
-      : defaultProfilePreferences.coordinates;
+      && parsed.coordinates[1] >= 18 && parsed.coordinates[1] <= 72;
+    const coordinates = hasValidCoordinates ? parsed.coordinates as [number, number] : defaultProfilePreferences.coordinates;
     return {
       name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim().slice(0, 40) : defaultProfilePreferences.name,
       zipCode: normalizeUsZip(String(parsed.zipCode ?? '')) ?? defaultProfilePreferences.zipCode,
       locationLabel: typeof parsed.locationLabel === 'string' && parsed.locationLabel.trim() ? parsed.locationLabel.trim().slice(0, 80) : defaultProfilePreferences.locationLabel,
       coordinates,
+      locationPrecision: hasValidCoordinates && parsed.locationPrecision === 'device' ? 'device' : 'zip',
       searchRadius: radii.has(parsed.searchRadius) ? parsed.searchRadius : defaultProfilePreferences.searchRadius,
       fulfillment: fulfillmentOptions.has(parsed.fulfillment) ? parsed.fulfillment : defaultProfilePreferences.fulfillment,
       salesTaxPercent: boundedNumber(parsed.salesTaxPercent, 0, 15, defaultProfilePreferences.salesTaxPercent),
@@ -75,7 +77,19 @@ export function fulfillmentLabel(value: FulfillmentPreference) {
   return value === 'pickup' ? 'Pickup first' : value === 'shipping' ? 'Shipping first' : 'Pickup & shipping';
 }
 
-export type ZipLocation = Pick<ProfilePreferences, 'zipCode' | 'locationLabel' | 'coordinates'>;
+export type ShoppingLocation = Pick<ProfilePreferences, 'zipCode' | 'locationLabel' | 'coordinates' | 'locationPrecision'>;
+export type ZipLocation = ShoppingLocation;
+
+export function deviceShoppingLocation(longitude: number, latitude: number, current: Pick<ProfilePreferences, 'zipCode' | 'locationLabel'>): ShoppingLocation {
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || longitude < -171 || longitude > -66 || latitude < 18 || latitude > 72) {
+    throw new Error('Current location must be within the United States');
+  }
+  return {
+    ...current,
+    coordinates: [longitude, latitude],
+    locationPrecision: 'device',
+  };
+}
 
 export async function lookupUsZip(value: string, fetcher: typeof fetch = fetch): Promise<ZipLocation> {
   const zipCode = normalizeUsZip(value);
@@ -91,5 +105,6 @@ export async function lookupUsZip(value: string, fetcher: typeof fetch = fetch):
     zipCode,
     locationLabel: `${place['place name']}, ${place['state abbreviation']}`,
     coordinates: [longitude, latitude],
+    locationPrecision: 'zip',
   };
 }
