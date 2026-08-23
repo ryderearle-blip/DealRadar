@@ -49,3 +49,10 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Manual checks against exact product matches from connected official feeds
 - Any-drop, 5%, 10%, and custom target prices plus back-in-stock monitoring
 - Latest verified-price comparison, clear match status, and editable watch settings
+
+## Profile features
+
+- Editable device-local profile and U.S. home ZIP lookup
+- Home-centered map, location-based distance estimates, and configurable shopping radius
+- Default pickup or shipping preference applied to Search
+- Notification preferences plus DealRadar data export and confirmed shopping-data clearing

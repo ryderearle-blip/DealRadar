@@ -5,6 +5,7 @@ import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortO
 import { filterMappedStores, retailerMatchesStore, type MapStoreFilters } from './map-logic';
 import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedStores, toggleSavedProduct, toggleSavedStore as toggleSavedStoreRecord, type SavedProductRecord, type SavedSort, type SavedStoreRecord } from './saved-logic';
 import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch, parsePriceWatchSettings, setPriceWatchSetting, type PriceWatchSetting } from './alert-logic';
+import { defaultProfilePreferences, fulfillmentLabel, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences } from './profile-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -77,6 +78,14 @@ const emptyFilters: SearchFilters = {
   retailers: [],
 };
 
+function profileSearchFilters(preferences: ProfilePreferences): SearchFilters {
+  return {
+    ...emptyFilters,
+    maxDistance: preferences.searchRadius,
+    fulfillment: preferences.fulfillment === 'both' ? 'all' : preferences.fulfillment,
+  };
+}
+
 type PriceHistoryPoint = { price: number; recordedAt: string };
 type CostBreakdown = { item: number; tax: number; shipping: number | null; travel: number | null; total: number; complete: boolean; method: 'Local pickup' | 'Online' };
 
@@ -113,7 +122,7 @@ const offers: Offer[] = [
   { store: 'Target Concord', price: null, distance: '55.2 mi', color: '#d92332', mark: '◎', detail: 'No public price API', address: '6150 Bayfield Pkwy', coordinates: [-80.6792366, 35.4170115], mapTier: 3 },
 ];
 
-const HOME: [number, number] = [-81.3627789, 35.2444756];
+const HOME: [number, number] = defaultProfilePreferences.coordinates;
 const MAPLIBRE_VERSION = '5.24.0';
 let mapLibraryPromise: Promise<any> | null = null;
 
@@ -194,15 +203,15 @@ function milesBetween(from: [number, number], to: [number, number]) {
   return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(calculation), Math.sqrt(1 - calculation));
 }
 
-function nearestRetailerDistance(retailer: string) {
+function nearestRetailerDistance(retailer: string, home: [number, number] = HOME) {
   const normalized = retailer.toLowerCase();
   const matchingStores = offers.filter(item => item.coordinates && item.store.toLowerCase().includes(normalized));
   if (!matchingStores.length) return null;
-  return Math.min(...matchingStores.map(item => milesBetween(HOME, item.coordinates!)));
+  return Math.min(...matchingStores.map(item => milesBetween(home, item.coordinates!)));
 }
 
-function costForOffer(item: LivePrice, scope: SearchFilters['scope']): CostBreakdown {
-  const distance = nearestRetailerDistance(item.retailer);
+function costForOffer(item: LivePrice, scope: SearchFilters['scope'], home: [number, number] = HOME): CostBreakdown {
+  const distance = nearestRetailerDistance(item.retailer, home);
   return calculateEstimatedTotalCost(item, scope, distance, HOME_TAX_RATE, TRAVEL_COST_PER_MILE);
 }
 
@@ -229,31 +238,43 @@ export default function Home() {
   const [savedQuery, setSavedQuery] = useState('');
   const [offer, setOffer] = useState(offers[0]);
   const [toast, setToast] = useState('');
+  const [preferences, setPreferencesState] = useState<ProfilePreferences>(defaultProfilePreferences);
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 1800); };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPreferencesState(parseProfilePreferences(window.localStorage.getItem('dealradar-profile'))), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const setPreferences = (next: ProfilePreferences) => {
+    setPreferencesState(next);
+    window.localStorage.setItem('dealradar-profile', JSON.stringify(next));
+  };
 
   return <main className="stage"><section className="phone" aria-label="DealRadar prototype">
     <div className="status"><b>9:41</b><i/><span>▮▮▮ ))) ▰</span></div>
-    <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => notify('Location set to 28086')}>● Kings Mountain, NC 28086⌄</button>}</div><button className="circle">{tab === 'Profile' ? '⚙' : '➤'}</button></header>
+    <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => setTab('Profile')}>● {preferences.locationLabel} {preferences.zipCode}⌄</button>}</div><button className="circle" onClick={() => tab === 'Profile' ? notify('Profile settings are saved on this device') : setTab('Map')} aria-label={tab === 'Profile' ? 'Profile settings status' : 'Open map'}>{tab === 'Profile' ? '⚙' : '➤'}</button></header>
     <div className="content">
-      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} notify={notify}/>}
-      {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify}/>} 
+      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} notify={notify} preferences={preferences}/>}
+      {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify} preferences={preferences}/>}
       {tab === 'Saved' && <Saved query={savedQuery} setQuery={setSavedQuery} notify={notify} shopProduct={(title: string) => { setQuery(title); setTab('Search'); }} browseStores={() => setTab('Map')} openStore={(store: SavedStoreRecord) => { setOffer({ ...store, price: null }); setTab('Map'); }}/>}
       {tab === 'Alerts' && <Alerts
         notify={notify}
         openSaved={() => setTab('Saved')}
         shopProduct={(title: string) => { setQuery(title); setTab('Search'); }}
+        preferences={preferences}
       />}
-      {tab === 'Profile' && <Profile notify={notify}/>} 
+      {tab === 'Profile' && <Profile preferences={preferences} setPreferences={setPreferences} notify={notify}/>}
     </div>
     <nav>{tabs.map(item => <button key={item} aria-label={`Open ${item} tab`} aria-current={tab === item ? 'page' : undefined} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}><b aria-hidden="true">{icons[item]}</b>{item}</button>)}</nav>
     {toast && <div className="toast">{toast}</div>}
   </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Real U.S. stores • Verified price feeds only</small></aside></main>;
 }
 
-function Search({ query, setQuery, open, notify }: any) {
+function Search({ query, setQuery, open, notify, preferences }: { query: string; setQuery: (value: string) => void; open: () => void; notify: (message: string) => void; preferences: ProfilePreferences }) {
   const priceSearch = useVerifiedPriceSearch(String(query));
-  const [filters, setFilters] = useState<SearchFilters>(emptyFilters);
-  const [draft, setDraft] = useState<SearchFilters>(emptyFilters);
+  const defaultFilters = useMemo(() => profileSearchFilters(preferences), [preferences]);
+  const [filters, setFilters] = useState<SearchFilters>(() => profileSearchFilters(preferences));
+  const [draft, setDraft] = useState<SearchFilters>(() => profileSearchFilters(preferences));
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -276,6 +297,14 @@ function Search({ query, setQuery, open, notify }: any) {
     const timer = window.setTimeout(() => setSavedProducts(parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'))), 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    setFilters(current => ({
+      ...current,
+      maxDistance: preferences.searchRadius,
+      fulfillment: preferences.fulfillment === 'both' ? 'all' : preferences.fulfillment,
+    }));
+  }, [preferences.fulfillment, preferences.searchRadius]);
 
   useEffect(() => {
     if (priceSearch.status === 'ready') recordVerifiedPriceHistory(priceSearch.offers);
@@ -301,9 +330,9 @@ function Search({ query, setQuery, open, notify }: any) {
   const filteredOffers = useMemo(() => filterAndSortOffers(
     priceSearch.offers,
     filters,
-    nearestRetailerDistance,
-    item => costForOffer(item, filters.scope).total,
-  ), [filters, priceSearch.offers]);
+    retailer => nearestRetailerDistance(retailer, preferences.coordinates),
+    item => costForOffer(item, filters.scope, preferences.coordinates).total,
+  ), [filters, preferences.coordinates, priceSearch.offers]);
   const comparedOffers = compareIds.flatMap(id => priceSearch.offers.find(item => item.id === id) ?? []);
 
   const appliedCount = [
@@ -350,17 +379,18 @@ function Search({ query, setQuery, open, notify }: any) {
       {priceSearch.status === 'loading' && <div className="search-loading"><span/><b>Checking official price feeds</b><small>Prices are never estimated.</small></div>}
       {priceSearch.status === 'error' && <div className="search-no-results"><b>Search is temporarily unavailable</b><span>Try again in a moment.</span></div>}
       {priceSearch.status === 'ready' && filteredOffers.length > 0 && <div className="search-results">{filteredOffers.map(item => {
-        const distance = nearestRetailerDistance(item.retailer);
-        const cost = costForOffer(item, filters.scope);
+        const distance = nearestRetailerDistance(item.retailer, preferences.coordinates);
+        const cost = costForOffer(item, filters.scope, preferences.coordinates);
         const selected = compareIds.includes(item.id);
         const saved = savedProducts.some(savedItem => savedItem.id === item.id);
         return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b>Official API</b></div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial total $${cost.total.toFixed(2)}`}<span>{cost.method}</span></em><button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
       })}</div>}
-      {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(emptyFilters)}>Reset filters</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
+      {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(defaultFilters)}>Reset filters</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
     </>}
     {filtersOpen && <SearchFilterSheet
       draft={draft}
       setDraft={setDraft}
+      resetFilters={defaultFilters}
       onClose={() => setFiltersOpen(false)}
       onApply={() => { setFilters(draft); setFiltersOpen(false); }}
     />}
@@ -372,6 +402,7 @@ function Search({ query, setQuery, open, notify }: any) {
     {compareOpen && <CompareSheet
       items={comparedOffers}
       scope={filters.scope}
+      home={preferences.coordinates}
       onClose={() => setCompareOpen(false)}
     />}
     {historyItem && <PriceHistorySheet
@@ -446,10 +477,10 @@ function BarcodeScanner({ onClose, onFound }: { onClose: () => void; onFound: (c
   return <div className="filter-backdrop scanner-backdrop" role="presentation"><section className="barcode-sheet" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div className="filter-sheet-head"><div><small>EXACT PRODUCT SEARCH</small><h2 id="scanner-title">Scan barcode</h2></div><button onClick={onClose} aria-label="Close barcode scanner">×</button></div><div className="camera-view"><video ref={videoRef} muted playsInline/><span/><b>UPC / EAN</b></div><p>{status}</p><form onSubmit={submit}><label><span>Enter barcode manually</span><input inputMode="numeric" autoComplete="off" value={manualCode} onChange={event => setManualCode(event.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="8–14 digit code"/></label><button type="submit">Search exact product</button></form><small className="privacy-note">Camera video stays on this device and is never uploaded.</small></section></div>;
 }
 
-function CompareSheet({ items, scope, onClose }: { items: LivePrice[]; scope: SearchFilters['scope']; onClose: () => void }) {
+function CompareSheet({ items, scope, home, onClose }: { items: LivePrice[]; scope: SearchFilters['scope']; home: [number, number]; onClose: () => void }) {
   return <div className="filter-backdrop compare-backdrop" role="presentation"><section className="compare-sheet" role="dialog" aria-modal="true" aria-labelledby="compare-title"><div className="filter-sheet-head"><div><small>SIDE-BY-SIDE</small><h2 id="compare-title">Compare {items.length} deals</h2></div><button onClick={onClose} aria-label="Close comparison">×</button></div><div className="compare-grid">{items.map(item => {
-    const cost = costForOffer(item, scope);
-    const distance = nearestRetailerDistance(item.retailer);
+    const cost = costForOffer(item, scope, home);
+    const distance = nearestRetailerDistance(item.retailer, home);
     return <article key={item.id}><div className="compare-brand">{item.retailer}</div><h3>{item.title}</h3><dl><div><dt>Item price</dt><dd>${item.price.toFixed(2)}</dd></div><div className="total"><dt>{cost.complete ? 'Estimated total' : 'Partial total'}</dt><dd>${cost.total.toFixed(2)}</dd></div><div><dt>Tax estimate</dt><dd>${cost.tax.toFixed(2)}</dd></div><div><dt>Shipping</dt><dd>{cost.shipping === null ? 'Not provided' : cost.shipping === 0 ? 'Free' : `$${cost.shipping.toFixed(2)}`}</dd></div><div><dt>Round-trip travel</dt><dd>{cost.travel === null ? 'Not applicable' : `$${cost.travel.toFixed(2)}`}</dd></div><div><dt>Distance</dt><dd>{distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</dd></div><div><dt>Availability</dt><dd>{item.availability}</dd></div><div><dt>Fulfillment</dt><dd>{item.fulfillment.join(' / ') || 'Not provided'}</dd></div><div><dt>Model match</dt><dd>{item.matchType}</dd></div><div><dt>Returns</dt><dd><a href={item.productUrl} target="_blank" rel="noreferrer">See retailer policy</a></dd></div></dl></article>;
   })}</div><p className="cost-disclaimer">Totals use the verified item price, official shipping cost when supplied, a 6.75% location-based tax estimate, and $0.70 per round-trip mile. Confirm tax and shipping at checkout.</p></section></div>;
 }
@@ -488,7 +519,7 @@ function PriceHistorySheet({ item, onClose }: { item: LivePrice; onClose: () => 
   return <div className="filter-backdrop history-backdrop" role="presentation"><section className="history-sheet" role="dialog" aria-modal="true" aria-labelledby="history-title"><div className="filter-sheet-head"><div><small>VERIFIED OBSERVATIONS</small><h2 id="history-title">Price history</h2></div><button onClick={onClose} aria-label="Close price history">×</button></div><h3>{item.title}</h3><div className="history-current"><span>Current official price</span><strong>${item.price.toFixed(2)}</strong></div>{history.length > 1 ? <><div className="history-chart" aria-label={`${history.length} saved price observations`}>{history.map((point, index) => <i key={`${point.recordedAt}-${index}`} style={{ height: `${24 + ((point.price - minimum) / spread) * 58}%` }} title={`${new Date(point.recordedAt).toLocaleDateString()}: $${point.price.toFixed(2)}`}/>)}</div><div className="history-range"><span>Low ${minimum.toFixed(2)}</span><span>High ${maximum.toFixed(2)}</span></div></> : <div className="history-empty"><b>First verified price saved</b><span>DealRadar will build this chart as official prices are observed over time.</span></div>}<button className={`history-alert ${alertOn ? 'active' : ''}`} onClick={toggleAlert}>{alertOn ? '✓ Price alert active' : '♧ Alert me when the price drops'}</button><p>Turning on an alert also saves this verified product. History is recorded from connected official retailer feeds on this device; no past prices are invented.</p></section></div>;
 }
 
-function SearchFilterSheet({ draft, setDraft, onClose, onApply }: { draft: SearchFilters; setDraft: (filters: SearchFilters) => void; onClose: () => void; onApply: () => void }) {
+function SearchFilterSheet({ draft, setDraft, resetFilters, onClose, onApply }: { draft: SearchFilters; setDraft: (filters: SearchFilters) => void; resetFilters: SearchFilters; onClose: () => void; onApply: () => void }) {
   const retailerOptions = ['Best Buy', 'Walmart', 'Amazon', 'Target', 'Apple', 'Micro Center'];
   const update = (change: Partial<SearchFilters>) => setDraft({ ...draft, ...change });
   const toggleRetailer = (retailer: string) => update({ retailers: draft.retailers.includes(retailer) ? draft.retailers.filter(item => item !== retailer) : [...draft.retailers, retailer] });
@@ -499,14 +530,14 @@ function SearchFilterSheet({ draft, setDraft, onClose, onApply }: { draft: Searc
     <fieldset><legend>Availability</legend><div className="filter-options">{[['all','Any availability'],['available','In stock only']].map(option => <button key={option[0]} className={draft.availability === option[0] ? 'selected' : ''} onClick={() => update({ availability: option[0] as SearchFilters['availability'] })}>{draft.availability === option[0] ? '✓ ' : ''}{option[1]}</button>)}</div></fieldset>
     <fieldset><legend>Fulfillment</legend><div className="filter-options">{[['all','Any'],['pickup','Pickup'],['shipping','Shipping']].map(option => <button key={option[0]} className={draft.fulfillment === option[0] ? 'selected' : ''} onClick={() => update({ fulfillment: option[0] as SearchFilters['fulfillment'] })}>{draft.fulfillment === option[0] ? '✓ ' : ''}{option[1]}</button>)}</div></fieldset>
     <fieldset><legend>Retailers</legend><div className="retailer-options">{retailerOptions.map(retailer => <button key={retailer} className={draft.retailers.includes(retailer) ? 'selected' : ''} onClick={() => toggleRetailer(retailer)}>{draft.retailers.includes(retailer) ? '✓ ' : ''}{retailer}</button>)}</div></fieldset>
-    <div className="filter-actions"><button onClick={() => setDraft(emptyFilters)}>Reset all</button><button className="apply" onClick={onApply}>Show results</button></div>
+    <div className="filter-actions"><button onClick={() => setDraft(resetFilters)}>Reset to Profile</button><button className="apply" onClick={onApply}>Show results</button></div>
   </section></div>;
 }
 function SearchBox({ value, setValue, placeholder }: any) { return <label className="searchbox"><b aria-hidden="true">⌕</b><input aria-label={placeholder || 'Search products'} value={value} onChange={e => setValue(e.target.value)} placeholder={placeholder}/></label> }
 type MapView = { radius: number; count: number };
 type MapFocusRequest = { id: string; coordinates: [number, number]; nonce: number } | null;
 
-function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetailers, onVisibleStores, active, focusRequest }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void; filters: MapStoreFilters; verifiedRetailers: string[]; onVisibleStores: (stores: Offer[]) => void; active: boolean; focusRequest: MapFocusRequest }) {
+function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetailers, onVisibleStores, active, focusRequest, home }: { offer: Offer; setOffer: (offer: Offer) => void; view: MapView; setView: (view: MapView) => void; filters: MapStoreFilters; verifiedRetailers: string[]; onVisibleStores: (stores: Offer[]) => void; active: boolean; focusRequest: MapFocusRequest; home: [number, number] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const selectedOfferRef = useRef(offer);
@@ -555,7 +586,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       map = new maplibregl.Map({
         container: containerRef.current,
         style: 'https://tiles.openfreemap.org/styles/liberty',
-        center: [-81.242, 35.251],
+        center: home,
         zoom: 10.35,
         minZoom: 3.4,
         maxZoom: 18,
@@ -568,11 +599,11 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
       map.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: 'imperial' }), 'bottom-left');
 
-      const home = document.createElement('div');
-      home.className = 'map-home-marker';
-      home.setAttribute('aria-label', 'Home area: Kings Mountain, NC 28086');
-      home.innerHTML = '<span>⌂</span>';
-      markers.push({ marker: new maplibregl.Marker({ element: home, anchor: 'center' }).setLngLat(HOME).addTo(map), element: home });
+      const homeMarker = document.createElement('div');
+      homeMarker.className = 'map-home-marker';
+      homeMarker.setAttribute('aria-label', 'Saved home area');
+      homeMarker.innerHTML = '<span>⌂</span>';
+      markers.push({ marker: new maplibregl.Marker({ element: homeMarker, anchor: 'center' }).setLngLat(home).addTo(map), element: homeMarker });
 
       const createOfferMarker = (item: Offer, live = false) => {
         const marker = document.createElement('button');
@@ -614,7 +645,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
           visibleCandidates,
           filtersRef.current,
           verifiedRetailersRef.current,
-          item => item.coordinates ? milesBetween(HOME, item.coordinates) : null,
+          item => item.coordinates ? milesBetween(home, item.coordinates) : null,
         );
         const visibleIds = new Set(filteredOffers.map(item => item.id ?? item.store));
         markers.forEach(entry => {
@@ -758,7 +789,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
       mapRef.current = null;
       visibilityUpdaterRef.current = () => undefined;
     };
-  }, [setOffer, setView]);
+  }, [home, setOffer, setView]);
 
   useEffect(() => {
     containerRef.current?.querySelectorAll<HTMLElement>('.price-marker').forEach(marker => {
@@ -766,7 +797,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
     });
   }, [offer.id, offer.store, status]);
 
-  const recenter = () => mapRef.current?.easeTo({ center: [-81.242, 35.251], zoom: 10.35, duration: 700 });
+  const recenter = () => mapRef.current?.easeTo({ center: home, zoom: 10.35, duration: 700 });
 
   return <div className="map-shell">
     <div ref={containerRef} className="map" aria-label="Interactive DealRadar store map" />
@@ -778,7 +809,7 @@ function InteractiveMap({ offer, setOffer, view, setView, filters, verifiedRetai
   </div>;
 }
 
-function Map({ query, setQuery, offer, setOffer, notify }: any) {
+function Map({ query, setQuery, offer, setOffer, notify, preferences }: { query: string; setQuery: (value: string) => void; offer: Offer; setOffer: (offer: Offer) => void; notify: (message: string) => void; preferences: ProfilePreferences }) {
   const [view, setView] = useState<MapView>({ radius: 20, count: 3 });
   const prices = useVerifiedPriceSearch(String(query));
   const [display, setDisplay] = useState<'map' | 'list'>('map');
@@ -810,6 +841,10 @@ function Map({ query, setQuery, offer, setOffer, notify }: any) {
     return () => window.clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    setMapFilters(current => ({ ...current, withinMiles: current.withinMiles === null ? null : preferences.searchRadius }));
+  }, [preferences.searchRadius]);
+
   const chooseStore = (store: Offer) => {
     setOffer(store);
     if (store.coordinates) setFocusRequest({ id: store.id ?? store.store, coordinates: store.coordinates, nonce: Date.now() });
@@ -820,7 +855,7 @@ function Map({ query, setQuery, offer, setOffer, notify }: any) {
       id: selectedStoreId,
       store: offer.store,
       address: offer.address,
-      distance: offer.coordinates ? `${milesBetween(HOME, offer.coordinates).toFixed(1)} mi` : offer.distance,
+      distance: offer.coordinates ? `${milesBetween(preferences.coordinates, offer.coordinates).toFixed(1)} mi` : offer.distance,
       detail: offer.detail,
       color: offer.color,
       mark: offer.mark,
@@ -836,13 +871,14 @@ function Map({ query, setQuery, offer, setOffer, notify }: any) {
   };
 
   return <section className="page map-page">
-    <div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="map-control-row"><div className="chips"><button className={mapFilters.verifiedOnly ? 'on' : ''} onClick={() => setMapFilters(current => ({ ...current, verifiedOnly: !current.verifiedOnly }))}>✓ Price connected</button><button className={mapFilters.withinMiles === 25 ? 'on' : ''} onClick={() => setMapFilters(current => ({ ...current, withinMiles: current.withinMiles === 25 ? null : 25 }))}>⌖ Within 25 mi</button><button disabled>~{view.radius} mi view</button></div><div className="map-list-toggle" role="group" aria-label="Show map or store list"><button className={display === 'map' ? 'active' : ''} onClick={() => setDisplay('map')}>Map</button><button className={display === 'list' ? 'active' : ''} onClick={() => setDisplay('list')}>List {visibleStores.length}</button></div></div></div>
-    <div className={display === 'map' ? 'map-display active' : 'map-display'}><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView} filters={mapFilters} verifiedRetailers={verifiedRetailers} onVisibleStores={receiveVisibleStores} active={display === 'map'} focusRequest={focusRequest}/></div>
+    <div className="map-top"><SearchBox value={query} setValue={setQuery}/><div className="map-control-row"><div className="chips"><button className={mapFilters.verifiedOnly ? 'on' : ''} onClick={() => setMapFilters(current => ({ ...current, verifiedOnly: !current.verifiedOnly }))}>✓ Price connected</button><button className={mapFilters.withinMiles === preferences.searchRadius ? 'on' : ''} onClick={() => setMapFilters(current => ({ ...current, withinMiles: current.withinMiles === preferences.searchRadius ? null : preferences.searchRadius }))}>⌖ Within {preferences.searchRadius} mi</button><button disabled>~{view.radius} mi view</button></div><div className="map-list-toggle" role="group" aria-label="Show map or store list"><button className={display === 'map' ? 'active' : ''} onClick={() => setDisplay('map')}>Map</button><button className={display === 'list' ? 'active' : ''} onClick={() => setDisplay('list')}>List {visibleStores.length}</button></div></div></div>
+    <div className={display === 'map' ? 'map-display active' : 'map-display'}><InteractiveMap offer={offer} setOffer={setOffer} view={view} setView={setView} filters={mapFilters} verifiedRetailers={verifiedRetailers} onVisibleStores={receiveVisibleStores} active={display === 'map'} focusRequest={focusRequest} home={preferences.coordinates}/></div>
     {display === 'list' && <MapStoreList
       stores={visibleStores}
       selected={offer}
       verifiedRetailers={verifiedRetailers}
       filters={mapFilters}
+      home={preferences.coordinates}
       onSelect={chooseStore}
       onClearFilters={() => setMapFilters({ verifiedOnly: false, withinMiles: null })}
     />}
@@ -859,15 +895,15 @@ function Map({ query, setQuery, offer, setOffer, notify }: any) {
   </section>;
 }
 
-function MapStoreList({ stores, selected, verifiedRetailers, filters, onSelect, onClearFilters }: { stores: Offer[]; selected: Offer; verifiedRetailers: string[]; filters: MapStoreFilters; onSelect: (store: Offer) => void; onClearFilters: () => void }) {
+function MapStoreList({ stores, selected, verifiedRetailers, filters, home, onSelect, onClearFilters }: { stores: Offer[]; selected: Offer; verifiedRetailers: string[]; filters: MapStoreFilters; home: [number, number]; onSelect: (store: Offer) => void; onClearFilters: () => void }) {
   const sorted = useMemo(() => [...stores].sort((first, second) => {
-    const firstDistance = first.coordinates ? milesBetween(HOME, first.coordinates) : Infinity;
-    const secondDistance = second.coordinates ? milesBetween(HOME, second.coordinates) : Infinity;
+    const firstDistance = first.coordinates ? milesBetween(home, first.coordinates) : Infinity;
+    const secondDistance = second.coordinates ? milesBetween(home, second.coordinates) : Infinity;
     return firstDistance - secondDistance;
-  }), [stores]);
+  }), [home, stores]);
 
   return <section className="map-store-list" aria-label="Stores visible on the map"><div className="map-store-list-head"><div><small>VISIBLE MAP AREA</small><h2>{stores.length} stores</h2></div><span>Nearest first</span></div>{sorted.length ? <div className="map-store-rows">{sorted.map(store => {
-    const distance = store.coordinates ? milesBetween(HOME, store.coordinates) : null;
+    const distance = store.coordinates ? milesBetween(home, store.coordinates) : null;
     const connected = verifiedRetailers.some(retailer => retailerMatchesStore(retailer, store.store));
     const active = (selected.id ?? selected.store) === (store.id ?? store.store);
     return <button key={store.id ?? store.store} className={active ? 'active' : ''} onClick={() => onSelect(store)}><b className="store-list-logo" style={{ background: store.color }}>{store.mark}</b><span><strong>{store.store}</strong><small>{distance === null ? store.distance : `${distance.toFixed(1)} mi`} · {store.address}</small><em className={connected ? 'connected' : ''}>{connected ? '✓ Price connected' : 'Mapped store'}</em></span><i>›</i></button>;
@@ -964,7 +1000,7 @@ type AlertCheckState = {
   checkedAt: string | null;
 };
 
-function Alerts({ notify, openSaved, shopProduct }: { notify: (message: string) => void; openSaved: () => void; shopProduct: (title: string) => void }) {
+function Alerts({ notify, openSaved, shopProduct, preferences }: { notify: (message: string) => void; openSaved: () => void; shopProduct: (title: string) => void; preferences: ProfilePreferences }) {
   const [products, setProducts] = useState<SavedProductRecord[]>([]);
   const [settings, setSettings] = useState<PriceWatchSetting[]>([]);
   const [check, setCheck] = useState<AlertCheckState>({ status: 'idle', offers: {}, checkedAt: null });
@@ -1003,7 +1039,8 @@ function Alerts({ notify, openSaved, shopProduct }: { notify: (message: string) 
       const nextOffers = Object.fromEntries(entries);
       const triggered = products.filter(product => {
         const setting = nextSettings.find(item => item.productId === product.id);
-        return setting && evaluatePriceWatch(product, nextOffers[product.id], setting).status === 'triggered';
+        const effective = setting ? { ...setting, backInStock: setting.backInStock && preferences.backInStockNotifications } : null;
+        return effective && evaluatePriceWatch(product, nextOffers[product.id], effective).status === 'triggered';
       }).length;
       setSettings(nextSettings);
       setCheck({ status: 'ready', offers: nextOffers, checkedAt });
@@ -1034,14 +1071,15 @@ function Alerts({ notify, openSaved, shopProduct }: { notify: (message: string) 
   const evaluations = products.map(product => {
     const setting = settings.find(item => item.productId === product.id) ?? ensurePriceWatchSettings([product], [], new Date().toISOString())[0];
     const current = check.offers[product.id] ?? null;
-    return { product, setting, current, evaluation: evaluatePriceWatch(product, current, setting) };
+    const effective = { ...setting, backInStock: setting.backInStock && preferences.backInStockNotifications };
+    return { product, setting, current, evaluation: evaluatePriceWatch(product, current, effective) };
   });
   const triggeredCount = check.status === 'ready' ? evaluations.filter(item => item.evaluation.status === 'triggered').length : 0;
 
   return <section className="page alerts-page">
     <div className="alerts-title"><div><small>VERIFIED RETAILER MONITORING</small><h2>Price alerts</h2></div><span>{products.length} active</span></div>
     {products.length === 0 ? <div className="alerts-empty"><b>♧</b><h3>No active price watches</h3><p>Save a verified product, then turn on Watch price to monitor it here.</p><button onClick={openSaved}>Open Saved products</button></div> : <>
-      <article className={`alert-summary ${triggeredCount ? 'has-deals' : ''}`}><div><b>{triggeredCount ? '✓' : '♧'}</b><span><small>{triggeredCount ? 'VERIFIED DEAL FOUND' : 'PRICE WATCHES READY'}</small><h3>{triggeredCount ? `${triggeredCount} ${triggeredCount === 1 ? 'price drop meets' : 'price drops meet'} your target` : `${products.length} ${products.length === 1 ? 'product' : 'products'} being watched`}</h3><p>{check.checkedAt ? `Last checked ${new Date(check.checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Check connected feeds for the latest official prices.'}</p></span></div><button disabled={check.status === 'checking'} onClick={checkFeeds}>{check.status === 'checking' ? 'Checking official feeds…' : 'Check verified feeds'}</button><small>Checks use official retailer results only while this prototype is open. DealRadar never invents a price drop.</small></article>
+      <article className={`alert-summary ${triggeredCount ? 'has-deals' : ''}`}><div><b>{triggeredCount ? '✓' : '♧'}</b><span><small>{triggeredCount ? 'VERIFIED DEAL FOUND' : 'PRICE WATCHES READY'}</small><h3>{triggeredCount ? `${triggeredCount} ${triggeredCount === 1 ? 'price drop meets' : 'price drops meet'} your target` : `${products.length} ${products.length === 1 ? 'product' : 'products'} being watched`}</h3><p>{check.checkedAt ? `Last checked ${new Date(check.checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Check connected feeds for the latest official prices.'}</p></span></div><button disabled={check.status === 'checking'} onClick={checkFeeds}>{check.status === 'checking' ? 'Checking official feeds…' : 'Check verified feeds'}</button><small>{preferences.priceDropNotifications ? 'Checks use official retailer results only while this prototype is open.' : 'Price-drop notifications are paused in Profile; verified checks still work.'} DealRadar never invents a price drop.</small></article>
       {check.status === 'error' && <div className="alert-check-error">Price feeds could not be checked. Try again in a moment.</div>}
       <div className="alerts-list-head"><h3>Watching</h3><span>{products.length} active</span></div>
       <div className="watch-list">{evaluations.map(({ product, setting, current, evaluation }) => {
@@ -1076,4 +1114,126 @@ function PriceWatchSheet({ product, setting, onClose, onSave }: { product: Saved
 
   return <div className="filter-backdrop watch-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="watch-sheet" role="dialog" aria-modal="true" aria-labelledby="watch-settings-title"><div className="filter-sheet-head"><div><small>VERIFIED PRICE WATCH</small><h2 id="watch-settings-title">Set your target</h2></div><button onClick={onClose} aria-label="Close price-watch settings">×</button></div><h3>{product.title}</h3><p>Saved verified price <b>${product.price.toFixed(2)}</b></p><div className="watch-targets"><button className={mode === 'any' ? 'selected' : ''} onClick={() => setMode('any')}>Any drop<small>Below ${product.price.toFixed(2)}</small></button><button className={mode === 'five' ? 'selected' : ''} onClick={() => setMode('five')}>5% off<small>${fivePercent.toFixed(2)}</small></button><button className={mode === 'ten' ? 'selected' : ''} onClick={() => setMode('ten')}>10% off<small>${tenPercent.toFixed(2)}</small></button><button className={mode === 'custom' ? 'selected' : ''} onClick={() => setMode('custom')}>Custom<small>Your price</small></button></div>{mode === 'custom' && <label className="custom-target"><span>Notify me at or below</span><div>$ <input inputMode="decimal" value={custom} onChange={event => setCustom(event.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00"/></div>{!validCustom && <small>Enter a price below ${product.price.toFixed(2)}.</small>}</label>}<label className="stock-watch"><span><b>Back-in-stock alert</b><small>Notify when an official feed reports it available again.</small></span><input type="checkbox" checked={backInStock} onChange={event => setBackInStock(event.target.checked)}/><i/></label><button className="save-watch" disabled={!validCustom} onClick={submit}>Save watch settings</button><small className="watch-disclaimer">Alerts are evaluated only when DealRadar receives a matching official retailer price.</small></section></div>;
 }
-function Profile({ notify }: any) { const [a,setA]=useState(true); const [b,setB]=useState(true); return <section className="page"><h2>Profile</h2><article className="identity"><i>JD</i><span><h3>Jordan Davis</h3><button onClick={() => notify('Edit profile selected')}>Edit profile ›</button></span></article><h3 className="section-title">Shopping preferences</h3><div className="settings">{[['●','Home location','Kings Mountain, NC 28086'],['⌾','Search radius','10 miles'],['▣','Preferred fulfillment','Pickup & delivery']].map(x => <button key={x[1]}><i>{x[0]}</i><span><b>{x[1]}</b><small>{x[2]}</small></span><em>›</em></button>)}</div><h3 className="section-title">Notifications</h3><div className="settings toggles"><label><i>♧</i><b>Price-drop alerts</b><input type="checkbox" checked={a} onChange={e=>setA(e.target.checked)}/><span/></label><label><i>▣</i><b>Back-in-stock alerts</b><input type="checkbox" checked={b} onChange={e=>setB(e.target.checked)}/><span/></label></div><button className="privacy">♢ <b>Privacy & data</b><span>›</span></button></section> }
+type ProfilePanel = 'name' | 'location' | 'radius' | 'fulfillment' | 'privacy' | null;
+
+function Profile({ preferences, setPreferences, notify }: { preferences: ProfilePreferences; setPreferences: (preferences: ProfilePreferences) => void; notify: (message: string) => void }) {
+  const [panel, setPanel] = useState<ProfilePanel>(null);
+  const update = (change: Partial<ProfilePreferences>, message: string) => {
+    setPreferences({ ...preferences, ...change });
+    notify(message);
+  };
+
+  return <section className="page profile-page">
+    <div className="profile-title"><div><small>SHOPPING SETUP</small><h2>Profile</h2></div><span>Saved on device</span></div>
+    <article className="profile-identity"><i>{profileInitials(preferences.name)}</i><span><small>DEALRADAR SHOPPER</small><h3>{preferences.name}</h3><button onClick={() => setPanel('name')}>Edit display name ›</button></span><b>✓</b></article>
+    <div className="profile-home-card"><span>⌂</span><div><small>HOME SHOPPING AREA</small><b>{preferences.locationLabel}</b><em>{preferences.zipCode} · United States</em></div><button onClick={() => setPanel('location')}>Change</button></div>
+    <div className="profile-section-head"><h3>Shopping preferences</h3><small>Used in Search and Map</small></div>
+    <div className="profile-settings"><button onClick={() => setPanel('radius')}><i>⌾</i><span><b>Shopping radius</b><small>Default Search distance and Map quick filter</small></span><em>{preferences.searchRadius} mi ›</em></button><button onClick={() => setPanel('fulfillment')}><i>▣</i><span><b>Preferred fulfillment</b><small>Sets the starting Search filter</small></span><em>{fulfillmentLabel(preferences.fulfillment)} ›</em></button></div>
+    <div className="profile-section-head"><h3>Notifications</h3><small>Device preferences</small></div>
+    <div className="profile-settings profile-toggles"><label><i>♧</i><span><b>Price-drop alerts</b><small>Allow verified target alerts</small></span><input type="checkbox" checked={preferences.priceDropNotifications} onChange={event => update({ priceDropNotifications: event.target.checked }, event.target.checked ? 'Price-drop notifications enabled' : 'Price-drop notifications paused')}/><em/></label><label><i>▣</i><span><b>Back-in-stock alerts</b><small>Allow verified availability alerts</small></span><input type="checkbox" checked={preferences.backInStockNotifications} onChange={event => update({ backInStockNotifications: event.target.checked }, event.target.checked ? 'Back-in-stock notifications enabled' : 'Back-in-stock notifications paused')}/><em/></label></div>
+    <button className="profile-privacy" onClick={() => setPanel('privacy')}><i>♢</i><span><b>Privacy & shopping data</b><small>Export or clear device-local DealRadar data</small></span><em>›</em></button>
+    <p className="profile-device-note">Your profile, saved items, watches, and observed price history stay in this browser for the current prototype.</p>
+    {panel === 'name' && <NameProfileSheet
+      current={preferences.name}
+      onClose={() => setPanel(null)}
+      onSave={name => { update({ name }, 'Display name updated'); setPanel(null); }}
+    />}
+    {panel === 'location' && <LocationProfileSheet
+      currentZip={preferences.zipCode}
+      onClose={() => setPanel(null)}
+      onSave={location => { update(location, `Home area changed to ${location.locationLabel}`); setPanel(null); }}
+    />}
+    {panel === 'radius' && <RadiusProfileSheet
+      current={preferences.searchRadius}
+      onClose={() => setPanel(null)}
+      onSave={searchRadius => { update({ searchRadius }, `Shopping radius set to ${searchRadius} miles`); setPanel(null); }}
+    />}
+    {panel === 'fulfillment' && <FulfillmentProfileSheet
+      current={preferences.fulfillment}
+      onClose={() => setPanel(null)}
+      onSave={fulfillment => { update({ fulfillment }, `Default changed to ${fulfillmentLabel(fulfillment)}`); setPanel(null); }}
+    />}
+    {panel === 'privacy' && <PrivacyProfileSheet
+      preferences={preferences}
+      onClose={() => setPanel(null)}
+      onCleared={() => notify('Saved shopping data cleared from this device')}
+    />}
+  </section>;
+}
+
+function ProfileSheetFrame({ eyebrow, title, onClose, children }: { eyebrow: string; title: string; onClose: () => void; children: React.ReactNode }) {
+  return <div className="filter-backdrop profile-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className="profile-sheet" role="dialog" aria-modal="true" aria-labelledby="profile-sheet-title"><div className="filter-sheet-head"><div><small>{eyebrow}</small><h2 id="profile-sheet-title">{title}</h2></div><button onClick={onClose} aria-label={`Close ${title}`}>×</button></div>{children}</section></div>;
+}
+
+function NameProfileSheet({ current, onClose, onSave }: { current: string; onClose: () => void; onSave: (name: string) => void }) {
+  const [name, setName] = useState(current);
+  const valid = name.trim().length > 0;
+  return <ProfileSheetFrame eyebrow="PROFILE" title="Display name" onClose={onClose}><label className="profile-field"><span>Name shown in DealRadar</span><input autoFocus maxLength={40} value={name} onChange={event => setName(event.target.value)} placeholder="Your name"/></label><button className="profile-save" disabled={!valid} onClick={() => valid && onSave(name.trim())}>Save name</button></ProfileSheetFrame>;
+}
+
+function LocationProfileSheet({ currentZip, onClose, onSave }: { currentZip: string; onClose: () => void; onSave: (location: Pick<ProfilePreferences, 'zipCode' | 'locationLabel' | 'coordinates'>) => void }) {
+  const [zip, setZip] = useState(currentZip);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const save = async () => {
+    const normalized = normalizeUsZip(zip);
+    if (!normalized || status === 'loading') { setStatus('error'); return; }
+    setStatus('loading');
+    try {
+      const response = await fetch(`https://api.zippopotam.us/us/${normalized}`);
+      if (!response.ok) throw new Error('ZIP not found');
+      const data = await response.json() as { places?: Array<{ 'place name': string; 'state abbreviation': string; longitude: string; latitude: string }> };
+      const place = data.places?.[0];
+      const longitude = Number(place?.longitude);
+      const latitude = Number(place?.latitude);
+      if (!place || !Number.isFinite(longitude) || !Number.isFinite(latitude)) throw new Error('Location unavailable');
+      onSave({ zipCode: normalized, locationLabel: `${place['place name']}, ${place['state abbreviation']}`, coordinates: [longitude, latitude] });
+    } catch {
+      setStatus('error');
+    }
+  };
+  return <ProfileSheetFrame eyebrow="UNITED STATES" title="Home shopping area" onClose={onClose}><p className="profile-sheet-copy">Your ZIP sets the map center and drives local distance estimates. The exact street address is not requested.</p><label className="profile-field"><span>5-digit ZIP code</span><input autoFocus inputMode="numeric" value={zip} onChange={event => { setZip(event.target.value.replace(/\D/g, '').slice(0, 5)); setStatus('idle'); }} placeholder="28086"/></label>{status === 'error' && <p className="profile-field-error">Enter a valid U.S. ZIP code and try again.</p>}<button className="profile-save" disabled={zip.length !== 5 || status === 'loading'} onClick={save}>{status === 'loading' ? 'Finding ZIP…' : 'Use this home area'}</button><small className="profile-sheet-note">ZIP lookup uses the public Zippopotam.us postal service.</small></ProfileSheetFrame>;
+}
+
+function RadiusProfileSheet({ current, onClose, onSave }: { current: ProfilePreferences['searchRadius']; onClose: () => void; onSave: (radius: ProfilePreferences['searchRadius']) => void }) {
+  const [radius, setRadius] = useState(current);
+  const values: ProfilePreferences['searchRadius'][] = [5, 10, 25, 50, 100];
+  return <ProfileSheetFrame eyebrow="LOCAL SHOPPING" title="Shopping radius" onClose={onClose}><p className="profile-sheet-copy">This becomes the default local Search distance and the Map’s distance quick filter. You can still explore stores across the U.S.</p><div className="profile-choice-grid">{values.map(value => <button key={value} className={radius === value ? 'selected' : ''} onClick={() => setRadius(value)}>{radius === value ? '✓ ' : ''}{value} miles</button>)}</div><button className="profile-save" onClick={() => onSave(radius)}>Save radius</button></ProfileSheetFrame>;
+}
+
+function FulfillmentProfileSheet({ current, onClose, onSave }: { current: ProfilePreferences['fulfillment']; onClose: () => void; onSave: (fulfillment: ProfilePreferences['fulfillment']) => void }) {
+  const [value, setValue] = useState(current);
+  const options: Array<{ value: ProfilePreferences['fulfillment']; title: string; note: string }> = [{ value: 'both', title: 'Pickup & shipping', note: 'Compare every verified option' }, { value: 'pickup', title: 'Pickup first', note: 'Start with local pickup results' }, { value: 'shipping', title: 'Shipping first', note: 'Start with shippable online results' }];
+  return <ProfileSheetFrame eyebrow="SEARCH DEFAULT" title="Preferred fulfillment" onClose={onClose}><div className="profile-choice-list">{options.map(option => <button key={option.value} className={value === option.value ? 'selected' : ''} onClick={() => setValue(option.value)}><i>{value === option.value ? '✓' : ''}</i><span><b>{option.title}</b><small>{option.note}</small></span></button>)}</div><button className="profile-save" onClick={() => onSave(value)}>Save preference</button></ProfileSheetFrame>;
+}
+
+function PrivacyProfileSheet({ preferences, onClose, onCleared }: { preferences: ProfilePreferences; onClose: () => void; onCleared: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const savedProducts = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products')).length;
+  const savedStores = parseSavedStores(window.localStorage.getItem('dealradar-saved-stores')).length;
+  let historyCount = 0;
+  try { historyCount = Object.keys(JSON.parse(window.localStorage.getItem('dealradar-price-history') ?? '{}')).length; } catch { historyCount = 0; }
+  const exportData = () => {
+    const data: Record<string, unknown> = {};
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith('dealradar-')) {
+        const raw = window.localStorage.getItem(key);
+        try { data[key] = JSON.parse(raw ?? 'null'); } catch { data[key] = raw; }
+      }
+    }
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), data }, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dealradar-data-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const clearShoppingData = () => {
+    const keys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith('dealradar-') && key !== 'dealradar-profile'));
+    keys.forEach(key => window.localStorage.removeItem(key));
+    window.localStorage.setItem('dealradar-profile', JSON.stringify(preferences));
+    setConfirming(false);
+    onCleared();
+  };
+  return <ProfileSheetFrame eyebrow="DEVICE-LOCAL DATA" title="Privacy & data" onClose={onClose}><p className="profile-sheet-copy">DealRadar stores prototype data in this browser. Retailer searches are sent only when you search or check an alert.</p><div className="profile-data-counts"><span><b>{savedProducts}</b><small>Saved products</small></span><span><b>{savedStores}</b><small>Saved stores</small></span><span><b>{historyCount}</b><small>Price histories</small></span></div><button className="profile-data-action" onClick={exportData}>⇩ <span><b>Export my DealRadar data</b><small>Download a readable JSON backup</small></span></button>{confirming ? <div className="profile-clear-confirm"><b>Clear saved shopping activity?</b><p>This removes saved products, stores, watches, history, and recent searches. Your Profile settings stay.</p><div><button onClick={() => setConfirming(false)}>Cancel</button><button onClick={clearShoppingData}>Clear data</button></div></div> : <button className="profile-data-action danger" onClick={() => setConfirming(true)}>× <span><b>Clear shopping data</b><small>Profile settings will be kept</small></span></button>}<small className="profile-sheet-note">The production app will need account controls and a published privacy policy before launch.</small></ProfileSheetFrame>;
+}

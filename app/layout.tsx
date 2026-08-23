@@ -6,6 +6,7 @@ import './map.css';
 import './search.css';
 import './saved.css';
 import './alerts.css';
+import './profile.css';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
