@@ -97,6 +97,12 @@ Store discovery is served through `/api/stores`. The endpoint accepts a small U.
 
 Private staging monitors can call `/api/health` for a non-cacheable, secret-free readiness response. Optional retailer setup is reported separately from application availability, so a missing retailer key never masquerades as an app outage.
 
+## Netlify hosting
+
+The repository includes a Netlify configuration that uses the standard Next.js build, preserves App Router pages and API routes, and deploys with Node.js 22 and pnpm 11. Netlify should import `ryderearle-blip/DealRadar`, use the repository root as the base directory, and accept the settings from `netlify.toml`.
+
+Do not change the apex DNS record until the Netlify production URL successfully serves `/`, `/api/health`, and the legal pages. After that validation, make `www.dealradar.biz` the primary Netlify domain and point the apex domain to Netlify so it redirects to `www`.
+
 The release gate audits all locked application and build dependencies for high-severity advisories. Browser responses receive framing, content-type, referrer, permissions, transport, and content-security protections while retaining the map, ZIP lookup, barcode camera, and official image sources DealRadar needs.
 
 Upstream-backed store discovery, offer search, and retailer health probes use bounded per-client request windows with non-cacheable retry responses. The health endpoint remains unrestricted so availability monitors are not mistaken for abusive traffic.

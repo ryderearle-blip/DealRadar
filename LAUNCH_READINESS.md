@@ -1,5 +1,13 @@
 # DealRadar launch readiness
 
+## Hosting migration
+
+- [x] Add a standard Next.js build configuration for Netlify
+- [ ] Connect the existing Netlify project to `ryderearle-blip/DealRadar`
+- [ ] Confirm the Netlify production URL serves the app and API health route
+- [ ] Point the root domain to Netlify and confirm HTTPS for root and `www`
+- [ ] Remove the former custom-domain binding after the Netlify cutover is stable
+
 DealRadar is a working mobile web prototype, not yet a production shopping service. This checklist keeps launch claims aligned with what the app can actually verify.
 
 ## Retailer feeds

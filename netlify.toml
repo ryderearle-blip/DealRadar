@@ -1,0 +1,14 @@
+[build]
+  command = "pnpm netlify:build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  PNPM_VERSION = "11.19.0"
+  PNPM_FLAGS = "--shamefully-hoist"
+  NETLIFY_NEXT_SKEW_PROTECTION = "true"
+
+[dev]
+  command = "pnpm next:dev"
+  targetPort = 3000
+

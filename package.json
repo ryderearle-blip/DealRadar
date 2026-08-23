@@ -10,12 +10,16 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
+    "next:dev": "next dev",
+    "netlify:build": "next build",
+    "netlify:start": "next start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "typecheck": "tsc -p tsconfig.verify.json --noEmit",
     "audit:dependencies": "pnpm audit --audit-level high",
     "verify:artifact": "node scripts/verify-build.mjs",
-    "verify": "pnpm audit:dependencies && pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm verify:artifact"
+    "verify": "pnpm audit:dependencies && pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm verify:artifact",
+    "verify:netlify": "pnpm test && pnpm typecheck && pnpm lint && pnpm netlify:build"
   },
   "dependencies": {
     "next": "16.3.2",
