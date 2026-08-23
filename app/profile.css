@@ -46,6 +46,12 @@
 .profile-privacy span b { font-size: 10px; }
 .profile-privacy span small { margin-top: 2px; color: var(--muted); font-size: 8px; }
 .profile-privacy > em { color: var(--green); font-size: 18px; font-style: normal; }
+.profile-tour { width: 100%; display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: center; margin-top: 8px; border: 0; border-radius: 16px; padding: 10px 12px; background: transparent; color: var(--blue); text-align: left; }
+.profile-tour > span b,
+.profile-tour > span small { display: block; }
+.profile-tour > span b { color: var(--ink); font-size: 9px; }
+.profile-tour > span small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.profile-tour > em { color: var(--green); font-size: 17px; font-style: normal; }
 .profile-device-note { margin: 11px 8px 0; color: var(--muted); font-size: 8px; line-height: 1.45; text-align: center; }
 
 .profile-sheet { width: 100%; max-height: calc(100% - 55px); overflow-y: auto; border-radius: 28px 28px 0 0; padding: 12px 21px max(22px,env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -14px 40px #10203625; }

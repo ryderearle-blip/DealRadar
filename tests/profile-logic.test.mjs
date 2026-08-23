@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   defaultProfilePreferences,
   fulfillmentLabel,
+  lookupUsZip,
   normalizeUsZip,
   parseProfilePreferences,
   profileInitials,
@@ -31,4 +32,13 @@ test('fulfillment preferences use shopper-friendly labels', () => {
   assert.equal(fulfillmentLabel('both'), 'Pickup & shipping');
   assert.equal(fulfillmentLabel('pickup'), 'Pickup first');
   assert.equal(fulfillmentLabel('shipping'), 'Shipping first');
+});
+
+test('ZIP lookup accepts only resolved U.S. postal data', async () => {
+  const location = await lookupUsZip('28086', async () => ({
+    ok: true,
+    json: async () => ({ places: [{ 'place name': 'Kings Mountain', 'state abbreviation': 'NC', longitude: '-81.3806', latitude: '35.2516' }] }),
+  }));
+  assert.deepEqual(location, { zipCode: '28086', locationLabel: 'Kings Mountain, NC', coordinates: [-81.3806, 35.2516] });
+  await assert.rejects(() => lookupUsZip('123', async () => ({ ok: false })), /valid U.S. ZIP/);
 });

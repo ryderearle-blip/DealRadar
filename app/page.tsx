@@ -5,7 +5,8 @@ import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortO
 import { filterMappedStores, retailerMatchesStore, type MapStoreFilters } from './map-logic';
 import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedStores, toggleSavedProduct, toggleSavedStore as toggleSavedStoreRecord, type SavedProductRecord, type SavedSort, type SavedStoreRecord } from './saved-logic';
 import { chooseVerifiedAlertOffer, ensurePriceWatchSettings, evaluatePriceWatch, parsePriceWatchSettings, setPriceWatchSetting, type PriceWatchSetting } from './alert-logic';
-import { defaultProfilePreferences, fulfillmentLabel, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences } from './profile-logic';
+import { defaultProfilePreferences, fulfillmentLabel, lookupUsZip, normalizeUsZip, parseProfilePreferences, profileInitials, type ProfilePreferences } from './profile-logic';
+import { ONBOARDING_VERSION, onboardingProgress, shouldShowOnboarding } from './onboarding-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -239,19 +240,56 @@ export default function Home() {
   const [offer, setOffer] = useState(offers[0]);
   const [toast, setToast] = useState('');
   const [preferences, setPreferencesState] = useState<ProfilePreferences>(defaultProfilePreferences);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [online, setOnline] = useState(true);
+  const [navCounts, setNavCounts] = useState<Record<Tab, number>>({ Search: 0, Map: 0, Saved: 0, Alerts: 0, Profile: 0 });
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 1800); };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setPreferencesState(parseProfilePreferences(window.localStorage.getItem('dealradar-profile'))), 0);
+    const timer = window.setTimeout(() => {
+      setPreferencesState(parseProfilePreferences(window.localStorage.getItem('dealradar-profile')));
+      setOnboardingOpen(shouldShowOnboarding(window.localStorage.getItem('dealradar-onboarding-version')));
+      setOnline(window.navigator.onLine);
+    }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  useEffect(() => {
+    const products = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'));
+    const stores = parseSavedStores(window.localStorage.getItem('dealradar-saved-stores'));
+    setNavCounts({
+      Search: 0,
+      Map: 0,
+      Saved: products.length + stores.length,
+      Alerts: products.filter(item => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true').length,
+      Profile: 0,
+    });
+  }, [tab, toast]);
   const setPreferences = (next: ProfilePreferences) => {
     setPreferencesState(next);
     window.localStorage.setItem('dealradar-profile', JSON.stringify(next));
   };
+  const finishOnboarding = (next: ProfilePreferences) => {
+    setPreferences(next);
+    window.localStorage.setItem('dealradar-onboarding-version', ONBOARDING_VERSION);
+    setOnboardingOpen(false);
+    setQuery('');
+    setTab('Search');
+    notify('DealRadar is ready');
+  };
 
   return <main className="stage"><section className="phone" aria-label="DealRadar prototype">
     <div className="status"><b>9:41</b><i/><span>▮▮▮ ))) ▰</span></div>
+    {!online && <div className="offline-banner" role="status">Offline · Saved items remain available</div>}
     <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => setTab('Profile')}>● {preferences.locationLabel} {preferences.zipCode}⌄</button>}</div><button className="circle" onClick={() => tab === 'Profile' ? notify('Profile settings are saved on this device') : setTab('Map')} aria-label={tab === 'Profile' ? 'Profile settings status' : 'Open map'}>{tab === 'Profile' ? '⚙' : '➤'}</button></header>
     <div className="content">
       {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} notify={notify} preferences={preferences}/>}
@@ -263,11 +301,44 @@ export default function Home() {
         shopProduct={(title: string) => { setQuery(title); setTab('Search'); }}
         preferences={preferences}
       />}
-      {tab === 'Profile' && <Profile preferences={preferences} setPreferences={setPreferences} notify={notify}/>}
+      {tab === 'Profile' && <Profile preferences={preferences} setPreferences={setPreferences} notify={notify} restartOnboarding={() => setOnboardingOpen(true)}/>}
     </div>
-    <nav>{tabs.map(item => <button key={item} aria-label={`Open ${item} tab`} aria-current={tab === item ? 'page' : undefined} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}><b aria-hidden="true">{icons[item]}</b>{item}</button>)}</nav>
+    <nav>{tabs.map(item => <button key={item} aria-label={`Open ${item} tab${navCounts[item] ? `, ${navCounts[item]} items` : ''}`} aria-current={tab === item ? 'page' : undefined} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}><b aria-hidden="true">{icons[item]}</b>{item}{navCounts[item] > 0 && <em>{navCounts[item] > 99 ? '99+' : navCounts[item]}</em>}</button>)}</nav>
     {toast && <div className="toast">{toast}</div>}
+    {onboardingOpen && <Onboarding
+      preferences={preferences}
+      onFinish={finishOnboarding}
+      onUseDefaults={() => finishOnboarding(defaultProfilePreferences)}
+    />}
   </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Real U.S. stores • Verified price feeds only</small></aside></main>;
+}
+
+function Onboarding({ preferences, onFinish, onUseDefaults }: { preferences: ProfilePreferences; onFinish: (preferences: ProfilePreferences) => void; onUseDefaults: () => void }) {
+  const [step, setStep] = useState(0);
+  const [zip, setZip] = useState(preferences.zipCode);
+  const [radius, setRadius] = useState<ProfilePreferences['searchRadius']>(preferences.searchRadius);
+  const [fulfillment, setFulfillment] = useState<ProfilePreferences['fulfillment']>(preferences.fulfillment);
+  const [resolvedLocation, setResolvedLocation] = useState<Pick<ProfilePreferences, 'zipCode' | 'locationLabel' | 'coordinates'>>({ zipCode: preferences.zipCode, locationLabel: preferences.locationLabel, coordinates: preferences.coordinates });
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const continueFromLocation = async () => {
+    if (locationStatus === 'loading') return;
+    setLocationStatus('loading');
+    try {
+      const location = await lookupUsZip(zip);
+      setResolvedLocation(location);
+      setLocationStatus('idle');
+      setStep(2);
+    } catch {
+      setLocationStatus('error');
+    }
+  };
+  const finish = () => onFinish({ ...preferences, ...resolvedLocation, searchRadius: radius, fulfillment });
+
+  return <section className="onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><div className="onboarding-progress"><span style={{ width: `${onboardingProgress(step)}%` }}/></div><div className="onboarding-brand">Deal<span>Radar</span><small>{step + 1} of 3</small></div>
+    {step === 0 && <div className="onboarding-step welcome"><div className="onboarding-radar" aria-hidden="true"><i/><i/><i/><b>⌖</b><span className="radar-store one">BEST<em>$</em></span><span className="radar-store two">◎<em>Store</em></span><span className="radar-store three">✦<em>Store</em></span></div><small>LOCAL + ONLINE PRICE DISCOVERY</small><h1 id="onboarding-title">Find it cheaper.<br/>Find it closer.</h1><p>DealRadar combines real U.S. store locations with official retailer price feeds so you can compare before you travel or order.</p><div className="onboarding-trust"><span>✓ Real mapped stores</span><span>✓ Verified prices only</span></div><button className="onboarding-primary" onClick={() => setStep(1)}>Set up DealRadar</button><button className="onboarding-secondary" onClick={onUseDefaults}>Use Kings Mountain defaults</button></div>}
+    {step === 1 && <div className="onboarding-step setup"><button className="onboarding-back" onClick={() => setStep(0)}>‹ Back</button><small>PERSONALIZE LOCAL RESULTS</small><h1 id="onboarding-title">Where do you shop from?</h1><p>Your ZIP centers the map and estimates store distance. DealRadar does not need your street address.</p><label className="onboarding-zip"><span>Home ZIP code</span><input autoFocus inputMode="numeric" value={zip} onChange={event => { setZip(event.target.value.replace(/\D/g, '').slice(0, 5)); setLocationStatus('idle'); }} placeholder="28086"/></label>{locationStatus === 'error' && <div className="onboarding-error">Enter a valid U.S. ZIP code.</div>}<fieldset><legend>Shopping radius</legend><div className="onboarding-radius">{([5,10,25,50,100] as const).map(value => <button key={value} className={radius === value ? 'selected' : ''} onClick={() => setRadius(value)}>{value} mi</button>)}</div></fieldset><fieldset><legend>Start Search with</legend><div className="onboarding-fulfillment">{([{ value: 'both', label: 'Both' }, { value: 'pickup', label: 'Pickup' }, { value: 'shipping', label: 'Shipping' }] as const).map(option => <button key={option.value} className={fulfillment === option.value ? 'selected' : ''} onClick={() => setFulfillment(option.value)}>{fulfillment === option.value ? '✓ ' : ''}{option.label}</button>)}</div></fieldset><button className="onboarding-primary" disabled={zip.length !== 5 || locationStatus === 'loading'} onClick={continueFromLocation}>{locationStatus === 'loading' ? 'Finding your area…' : 'Continue'}</button></div>}
+    {step === 2 && <div className="onboarding-step trust"><button className="onboarding-back" onClick={() => setStep(1)}>‹ Back</button><small>HONEST BY DESIGN</small><h1 id="onboarding-title">Know what’s verified.</h1><p>DealRadar clearly separates mapped locations from connected prices. If a retailer has no approved feed, the app shows “Price unavailable”—never a guess.</p><div className="onboarding-principles"><article><b>✓</b><span><strong>Official price feeds</strong><small>Prices include their retailer and match quality.</small></span></article><article><b>⌖</b><span><strong>Real U.S. locations</strong><small>Stores come from OpenStreetMap records.</small></span></article><article><b>♢</b><span><strong>Private by default</strong><small>Saved items and preferences stay on this device.</small></span></article></div><div className="onboarding-ready"><span>Home area</span><b>{resolvedLocation.locationLabel} {resolvedLocation.zipCode}</b><small>{radius} miles · {fulfillmentLabel(fulfillment)}</small></div><button className="onboarding-primary" onClick={finish}>Start finding deals</button></div>}
+  </section>;
 }
 
 function Search({ query, setQuery, open, notify, preferences }: { query: string; setQuery: (value: string) => void; open: () => void; notify: (message: string) => void; preferences: ProfilePreferences }) {
@@ -1116,7 +1187,7 @@ function PriceWatchSheet({ product, setting, onClose, onSave }: { product: Saved
 }
 type ProfilePanel = 'name' | 'location' | 'radius' | 'fulfillment' | 'privacy' | null;
 
-function Profile({ preferences, setPreferences, notify }: { preferences: ProfilePreferences; setPreferences: (preferences: ProfilePreferences) => void; notify: (message: string) => void }) {
+function Profile({ preferences, setPreferences, notify, restartOnboarding }: { preferences: ProfilePreferences; setPreferences: (preferences: ProfilePreferences) => void; notify: (message: string) => void; restartOnboarding: () => void }) {
   const [panel, setPanel] = useState<ProfilePanel>(null);
   const update = (change: Partial<ProfilePreferences>, message: string) => {
     setPreferences({ ...preferences, ...change });
@@ -1132,6 +1203,7 @@ function Profile({ preferences, setPreferences, notify }: { preferences: Profile
     <div className="profile-section-head"><h3>Notifications</h3><small>Device preferences</small></div>
     <div className="profile-settings profile-toggles"><label><i>♧</i><span><b>Price-drop alerts</b><small>Allow verified target alerts</small></span><input type="checkbox" checked={preferences.priceDropNotifications} onChange={event => update({ priceDropNotifications: event.target.checked }, event.target.checked ? 'Price-drop notifications enabled' : 'Price-drop notifications paused')}/><em/></label><label><i>▣</i><span><b>Back-in-stock alerts</b><small>Allow verified availability alerts</small></span><input type="checkbox" checked={preferences.backInStockNotifications} onChange={event => update({ backInStockNotifications: event.target.checked }, event.target.checked ? 'Back-in-stock notifications enabled' : 'Back-in-stock notifications paused')}/><em/></label></div>
     <button className="profile-privacy" onClick={() => setPanel('privacy')}><i>♢</i><span><b>Privacy & shopping data</b><small>Export or clear device-local DealRadar data</small></span><em>›</em></button>
+    <button className="profile-tour" onClick={restartOnboarding}>◎ <span><b>How DealRadar works</b><small>Replay the three-step welcome tour</small></span><em>›</em></button>
     <p className="profile-device-note">Your profile, saved items, watches, and observed price history stay in this browser for the current prototype.</p>
     {panel === 'name' && <NameProfileSheet
       current={preferences.name}
@@ -1179,14 +1251,7 @@ function LocationProfileSheet({ currentZip, onClose, onSave }: { currentZip: str
     if (!normalized || status === 'loading') { setStatus('error'); return; }
     setStatus('loading');
     try {
-      const response = await fetch(`https://api.zippopotam.us/us/${normalized}`);
-      if (!response.ok) throw new Error('ZIP not found');
-      const data = await response.json() as { places?: Array<{ 'place name': string; 'state abbreviation': string; longitude: string; latitude: string }> };
-      const place = data.places?.[0];
-      const longitude = Number(place?.longitude);
-      const latitude = Number(place?.latitude);
-      if (!place || !Number.isFinite(longitude) || !Number.isFinite(latitude)) throw new Error('Location unavailable');
-      onSave({ zipCode: normalized, locationLabel: `${place['place name']}, ${place['state abbreviation']}`, coordinates: [longitude, latitude] });
+      onSave(await lookupUsZip(normalized));
     } catch {
       setStatus('error');
     }
@@ -1229,7 +1294,7 @@ function PrivacyProfileSheet({ preferences, onClose, onCleared }: { preferences:
     URL.revokeObjectURL(url);
   };
   const clearShoppingData = () => {
-    const keys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith('dealradar-') && key !== 'dealradar-profile'));
+    const keys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index)).filter((key): key is string => Boolean(key?.startsWith('dealradar-') && key !== 'dealradar-profile' && key !== 'dealradar-onboarding-version'));
     keys.forEach(key => window.localStorage.removeItem(key));
     window.localStorage.setItem('dealradar-profile', JSON.stringify(preferences));
     setConfirming(false);

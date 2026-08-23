@@ -63,3 +63,22 @@ export function profileInitials(name: string) {
 export function fulfillmentLabel(value: FulfillmentPreference) {
   return value === 'pickup' ? 'Pickup first' : value === 'shipping' ? 'Shipping first' : 'Pickup & shipping';
 }
+
+export type ZipLocation = Pick<ProfilePreferences, 'zipCode' | 'locationLabel' | 'coordinates'>;
+
+export async function lookupUsZip(value: string, fetcher: typeof fetch = fetch): Promise<ZipLocation> {
+  const zipCode = normalizeUsZip(value);
+  if (!zipCode) throw new Error('Enter a valid U.S. ZIP code');
+  const response = await fetcher(`https://api.zippopotam.us/us/${zipCode}`);
+  if (!response.ok) throw new Error('ZIP code not found');
+  const data = await response.json() as { places?: Array<{ 'place name': string; 'state abbreviation': string; longitude: string; latitude: string }> };
+  const place = data.places?.[0];
+  const longitude = Number(place?.longitude);
+  const latitude = Number(place?.latitude);
+  if (!place || !Number.isFinite(longitude) || !Number.isFinite(latitude)) throw new Error('ZIP location unavailable');
+  return {
+    zipCode,
+    locationLabel: `${place['place name']}, ${place['state abbreviation']}`,
+    coordinates: [longitude, latitude],
+  };
+}

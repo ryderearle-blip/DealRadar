@@ -56,3 +56,10 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Home-centered map, location-based distance estimates, and configurable shopping radius
 - Default pickup or shipping preference applied to Search
 - Notification preferences plus DealRadar data export and confirmed shopping-data clearing
+
+## First-run and mobile experience
+
+- Three-step onboarding for verified pricing, U.S. home area, radius, and fulfillment defaults
+- Offline status feedback and live Saved/Alerts navigation counts
+- Replayable product tour from Profile
+- Installable mobile-app manifest, iPhone safe-area support, and standalone display metadata
