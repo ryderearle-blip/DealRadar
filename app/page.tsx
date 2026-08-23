@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildPredictiveSuggestions, calculateEstimatedTotalCost, filterAndSortOffers, normalizeBarcode, toggleComparison, updatePriceHistory } from './search-logic';
 import { filterMappedStores, retailerMatchesStore, type MapStoreFilters } from './map-logic';
+import { filterSavedProducts, filterSavedStores, parseSavedProducts, parseSavedStores, toggleSavedProduct, toggleSavedStore as toggleSavedStoreRecord, type SavedProductRecord, type SavedSort, type SavedStoreRecord } from './saved-logic';
 
 type Tab = 'Search' | 'Map' | 'Saved' | 'Alerts' | 'Profile';
 const tabs: Tab[] = ['Search', 'Map', 'Saved', 'Alerts', 'Profile'];
@@ -148,12 +149,6 @@ function loadMapLibrary() {
 
   return mapLibraryPromise;
 }
-const products = [
-  ['Sony 55-inch TV', 'Waiting for live prices', '', '▰'],
-  ['Apple AirPods Pro', 'Waiting for live prices', '', '◉'],
-  ['Nintendo Switch OLED', 'Waiting for live prices', '', '▣'],
-];
-
 function useVerifiedPriceSearch(query: string): PriceSearch {
   const [prices, setPrices] = useState<PriceSearch>({ status: 'idle', offers: [], retailers: [] });
 
@@ -234,15 +229,14 @@ export default function Home() {
   const [offer, setOffer] = useState(offers[0]);
   const [toast, setToast] = useState('');
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 1800); };
-  const filtered = useMemo(() => products.filter(p => p[0].toLowerCase().includes(savedQuery.toLowerCase())), [savedQuery]);
 
   return <main className="stage"><section className="phone" aria-label="DealRadar prototype">
     <div className="status"><b>9:41</b><i/><span>▮▮▮ ))) ▰</span></div>
     <header><div><h1>Deal<span>Radar</span></h1>{tab !== 'Profile' && <button onClick={() => notify('Location set to 28086')}>● Kings Mountain, NC 28086⌄</button>}</div><button className="circle">{tab === 'Profile' ? '⚙' : '➤'}</button></header>
     <div className="content">
-      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')}/>} 
+      {tab === 'Search' && <Search query={query} setQuery={setQuery} open={() => setTab('Map')} notify={notify}/>
       {tab === 'Map' && <Map query={query} setQuery={setQuery} offer={offer} setOffer={setOffer} notify={notify}/>} 
-      {tab === 'Saved' && <Saved query={savedQuery} setQuery={setSavedQuery} products={filtered} notify={notify}/>} 
+      {tab === 'Saved' && <Saved query={savedQuery} setQuery={setSavedQuery} notify={notify} shopProduct={(title: string) => { setQuery(title); setTab('Search'); }} browseStores={() => setTab('Map')} openStore={(store: SavedStoreRecord) => { setOffer({ ...store, price: null }); setTab('Map'); }}/>
       {tab === 'Alerts' && <Alerts notify={notify}/>} 
       {tab === 'Profile' && <Profile notify={notify}/>} 
     </div>
@@ -251,7 +245,7 @@ export default function Home() {
   </section><aside><b>DealRadar</b><span>Interactive mobile prototype</span><small>Real U.S. stores • Verified price feeds only</small></aside></main>;
 }
 
-function Search({ query, setQuery, open }: any) {
+function Search({ query, setQuery, open, notify }: any) {
   const priceSearch = useVerifiedPriceSearch(String(query));
   const [filters, setFilters] = useState<SearchFilters>(emptyFilters);
   const [draft, setDraft] = useState<SearchFilters>(emptyFilters);
@@ -262,6 +256,7 @@ function Search({ query, setQuery, open }: any) {
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
   const [historyItem, setHistoryItem] = useState<LivePrice | null>(null);
+  const [savedProducts, setSavedProducts] = useState<SavedProductRecord[]>([]);
   const isSearching = String(query).trim().length >= 2;
 
   useEffect(() => {
@@ -269,6 +264,11 @@ function Search({ query, setQuery, open }: any) {
       try { setRecentSearches(JSON.parse(window.localStorage.getItem('dealradar-recent-searches') ?? '[]')); }
       catch { setRecentSearches([]); }
     }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSavedProducts(parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'))), 0);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -306,6 +306,27 @@ function Search({ query, setQuery, open }: any) {
     filters.availability !== 'all', filters.fulfillment !== 'all', filters.retailers.length > 0,
   ].filter(Boolean).length;
   const beginFiltering = () => { setDraft(filters); setFiltersOpen(true); };
+  const saveProduct = (item: LivePrice) => {
+    const alreadySaved = savedProducts.some(saved => saved.id === item.id);
+    const record: SavedProductRecord = {
+      id: item.id,
+      title: item.title,
+      retailer: item.retailer,
+      price: item.price,
+      regularPrice: item.regularPrice,
+      availability: item.availability,
+      productUrl: item.productUrl,
+      modelNumber: item.modelNumber,
+      savedAt: new Date().toISOString(),
+      verifiedAt: item.updatedAt,
+    };
+    setSavedProducts(current => {
+      const next = toggleSavedProduct(current, record);
+      window.localStorage.setItem('dealradar-saved-products', JSON.stringify(next));
+      return next;
+    });
+    notify(alreadySaved ? `${item.title} removed from Saved` : `${item.title} saved`);
+  };
 
   return <section className="page search-page">
     <PredictiveSearchBox value={String(query)} setValue={setQuery} suggestions={suggestions} open={suggestionsOpen} setOpen={setSuggestionsOpen} onSelect={commitSearch} onScan={() => setScannerOpen(true)} onClearRecent={() => { setRecentSearches([]); window.localStorage.removeItem('dealradar-recent-searches'); }}/>
@@ -327,7 +348,8 @@ function Search({ query, setQuery, open }: any) {
         const distance = nearestRetailerDistance(item.retailer);
         const cost = costForOffer(item, filters.scope);
         const selected = compareIds.includes(item.id);
-        return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b>Official API</b></div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial total $${cost.total.toFixed(2)}`}<span>{cost.method}</span></em><button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
+        const saved = savedProducts.some(savedItem => savedItem.id === item.id);
+        return <article key={item.id} className={selected ? 'selected-for-compare' : ''}><button className="compare-check" aria-label={`${selected ? 'Remove' : 'Add'} ${item.title} ${selected ? 'from' : 'to'} comparison`} onClick={() => setCompareIds(current => toggleComparison(current, item.id))}>{selected ? '✓' : '+'}</button><button className={`save-result ${saved ? 'saved' : ''}`} aria-label={`${saved ? 'Remove' : 'Save'} ${item.title}`} onClick={() => saveProduct(item)}>{saved ? '♥' : '♡'}</button><div className="result-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="result-copy"><small>{item.retailer} · {distance === null ? 'Online' : `${distance.toFixed(1)} mi`}</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<span>{item.availability}{item.fulfillment.length ? ` · ${item.fulfillment.join(' & ')}` : ''}</span><div className="result-badges"><b title={item.matchReason} className={`match-${item.matchType}`}>{item.matchType === 'exact' ? '✓ Exact match' : item.matchType === 'similar' ? '≈ Similar model' : '? Possible match'}</b><b>Official API</b></div></div><div className="result-price"><strong>${item.price.toFixed(2)}</strong>{item.regularPrice && item.regularPrice > item.price ? <small>was ${item.regularPrice.toFixed(2)}</small> : null}<em>{cost.complete ? `Est. total $${cost.total.toFixed(2)}` : `Partial total $${cost.total.toFixed(2)}`}<span>{cost.method}</span></em><button onClick={() => setHistoryItem(item)}>⌁ Price history</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></article>;
       })}</div>}
       {priceSearch.status === 'ready' && filteredOffers.length === 0 && <div className="search-no-results"><b>{priceSearch.offers.length ? 'No results match these filters' : 'Retailer connection needed'}</b><span>{priceSearch.offers.length ? 'Change or reset your filters to see more options.' : 'The search and filters are ready. Live results will appear after an approved retailer feed is connected.'}</span>{appliedCount > 0 && <button onClick={() => setFilters(emptyFilters)}>Reset filters</button>}<button className="map-link" onClick={open}>Browse real stores on the map</button></div>}
     </>}
@@ -740,17 +762,27 @@ function Map({ query, setQuery, offer, setOffer, notify }: any) {
   const [mapFilters, setMapFilters] = useState<MapStoreFilters>({ verifiedOnly: false, withinMiles: null });
   const [visibleStores, setVisibleStores] = useState<Offer[]>([]);
   const [focusRequest, setFocusRequest] = useState<MapFocusRequest>(null);
-  const [savedStores, setSavedStores] = useState<string[]>([]);
+  const [savedStores, setSavedStores] = useState<SavedStoreRecord[]>([]);
   const verifiedRetailers = useMemo(() => [...new Set(prices.offers.map(item => item.retailer))], [prices.offers]);
   const selectedSearch = useMemo(() => ({ ...prices, offers: prices.offers.filter(item => retailerMatchesStore(item.retailer, offer.store)) }), [offer.store, prices]);
   const receiveVisibleStores = useCallback((stores: Offer[]) => setVisibleStores(stores), []);
   const selectedStoreId = offer.id ?? offer.store;
-  const selectedSaved = savedStores.includes(selectedStoreId);
+  const selectedSaved = savedStores.some(store => store.id === selectedStoreId);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      try { setSavedStores(JSON.parse(window.localStorage.getItem('dealradar-saved-stores') ?? '[]')); }
-      catch { setSavedStores([]); }
+      const knownStores: SavedStoreRecord[] = offers.map(store => ({
+        id: store.id ?? store.store,
+        store: store.store,
+        address: store.address,
+        distance: store.distance,
+        detail: store.detail,
+        color: store.color,
+        mark: store.mark,
+        coordinates: store.coordinates,
+        savedAt: new Date(0).toISOString(),
+      }));
+      setSavedStores(parseSavedStores(window.localStorage.getItem('dealradar-saved-stores'), knownStores));
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -761,8 +793,19 @@ function Map({ query, setQuery, offer, setOffer, notify }: any) {
     setDisplay('map');
   };
   const toggleSavedStore = () => {
+    const record: SavedStoreRecord = {
+      id: selectedStoreId,
+      store: offer.store,
+      address: offer.address,
+      distance: offer.coordinates ? `${milesBetween(HOME, offer.coordinates).toFixed(1)} mi` : offer.distance,
+      detail: offer.detail,
+      color: offer.color,
+      mark: offer.mark,
+      coordinates: offer.coordinates,
+      savedAt: new Date().toISOString(),
+    };
     setSavedStores(current => {
-      const next = current.includes(selectedStoreId) ? current.filter(id => id !== selectedStoreId) : [...current, selectedStoreId];
+      const next = toggleSavedStoreRecord(current, record);
       window.localStorage.setItem('dealradar-saved-stores', JSON.stringify(next));
       return next;
     });
@@ -822,6 +865,75 @@ function LivePriceResults({ query, search, storeName }: { query: string; search:
   return <div className="price-feed-state"><b>{connected ? `No verified ${storeName ? `${storeName} ` : ''}price` : 'Retailer access needed'}</b><span>{connected ? `No connected feed matched “${query}” for this store.` : `${ready?.retailer ?? 'Retailer'} integration is built and waiting for approved credentials.`}</span><small>{search.retailers.filter(item => item.state === 'partner_access').map(item => item.retailer).join(' and ')} require partner approval.</small></div>;
 }
 
-function Saved({ query, setQuery, products, notify }: any) { return <section className="page"><h2>Saved</h2><SearchBox value={query} setValue={setQuery} placeholder="Search saved items"/><div className="segments"><button className="on">Products</button><button>Stores</button></div><div className="summary"><b>♧</b><span><strong>3 price watches</strong><small>Alerts begin when a verified feed is connected.</small></span></div><div className="saved-list">{products.map((p:any) => <article key={p[0]}><i>{p[3]}</i><span><h3>{p[0]}</h3><small>Verified price</small><strong>{p[1]}</strong>{p[2] && <em>{p[2]}</em>}<button onClick={() => notify(`Viewing ${p[0]}`)}>Check feeds ›</button></span><b>♥</b></article>)}</div>{!products.length && <p className="empty">No saved items found.</p>}</section> }
+function Saved({ query, setQuery, notify, shopProduct, browseStores, openStore }: { query: string; setQuery: (value: string) => void; notify: (message: string) => void; shopProduct: (title: string) => void; browseStores: () => void; openStore: (store: SavedStoreRecord) => void }) {
+  const [section, setSection] = useState<'products' | 'stores'>('products');
+  const [sort, setSort] = useState<SavedSort>('recent');
+  const [savedProducts, setSavedProducts] = useState<SavedProductRecord[]>([]);
+  const [savedStores, setSavedStores] = useState<SavedStoreRecord[]>([]);
+  const [alertIds, setAlertIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const knownStores: SavedStoreRecord[] = offers.map(store => ({
+      id: store.id ?? store.store,
+      store: store.store,
+      address: store.address,
+      distance: store.distance,
+      detail: store.detail,
+      color: store.color,
+      mark: store.mark,
+      coordinates: store.coordinates,
+      savedAt: new Date(0).toISOString(),
+    }));
+    const products = parseSavedProducts(window.localStorage.getItem('dealradar-saved-products'));
+    setSavedProducts(products);
+    setSavedStores(parseSavedStores(window.localStorage.getItem('dealradar-saved-stores'), knownStores));
+    setAlertIds(products.filter(item => window.localStorage.getItem(`dealradar-alert-${item.id}`) === 'true').map(item => item.id));
+  }, []);
+
+  const visibleProducts = useMemo(() => filterSavedProducts(savedProducts, query, sort), [query, savedProducts, sort]);
+  const storeSort = sort === 'name' ? 'name' : 'recent';
+  const visibleStores = useMemo(() => filterSavedStores(savedStores, query, storeSort), [query, savedStores, storeSort]);
+  const removeProduct = (item: SavedProductRecord) => {
+    const next = savedProducts.filter(product => product.id !== item.id);
+    setSavedProducts(next);
+    setAlertIds(current => current.filter(id => id !== item.id));
+    window.localStorage.setItem('dealradar-saved-products', JSON.stringify(next));
+    window.localStorage.removeItem(`dealradar-alert-${item.id}`);
+    notify(`${item.title} removed from Saved`);
+  };
+  const removeStore = (item: SavedStoreRecord) => {
+    const next = savedStores.filter(store => store.id !== item.id);
+    setSavedStores(next);
+    window.localStorage.setItem('dealradar-saved-stores', JSON.stringify(next));
+    notify(`${item.store} removed from Saved`);
+  };
+  const toggleAlert = (item: SavedProductRecord) => {
+    const active = alertIds.includes(item.id);
+    const next = active ? alertIds.filter(id => id !== item.id) : [...alertIds, item.id];
+    setAlertIds(next);
+    window.localStorage.setItem(`dealradar-alert-${item.id}`, String(!active));
+    notify(active ? `Price watch turned off for ${item.title}` : `Watching ${item.title} for a verified price drop`);
+  };
+
+  return <section className="page saved-page">
+    <div className="saved-title"><div><small>YOUR SHORTLIST</small><h2>Saved</h2></div><span>{savedProducts.length + savedStores.length} total</span></div>
+    <SearchBox value={query} setValue={setQuery} placeholder={`Search saved ${section}`}/>
+    <div className="segments" role="group" aria-label="Saved item type"><button className={section === 'products' ? 'on' : ''} onClick={() => { setSection('products'); setSort('recent'); }}>Products <b>{savedProducts.length}</b></button><button className={section === 'stores' ? 'on' : ''} onClick={() => { setSection('stores'); setSort('recent'); }}>Stores <b>{savedStores.length}</b></button></div>
+    <div className="saved-toolbar"><span>{section === 'products' ? `${visibleProducts.length} saved products` : `${visibleStores.length} saved stores`}</span><select aria-label="Sort saved items" value={sort} onChange={event => setSort(event.target.value as SavedSort)}><option value="recent">Recently saved</option><option value="name">Name A–Z</option>{section === 'products' && <option value="price-low">Lowest price</option>}</select></div>
+    {section === 'products' && <>
+      <div className="summary saved-watch-summary"><b>♧</b><span><strong>{alertIds.length} active price {alertIds.length === 1 ? 'watch' : 'watches'}</strong><small>Only verified retailer prices can trigger an alert.</small></span></div>
+      {visibleProducts.length > 0 ? <div className="saved-product-list">{visibleProducts.map(item => {
+        const alertActive = alertIds.includes(item.id);
+        const discounted = item.regularPrice !== null && item.regularPrice > item.price;
+        return <article key={item.id}><div className="saved-product-brand">{item.retailer === 'Best Buy' ? 'BEST' : item.retailer.slice(0, 2).toUpperCase()}</div><div className="saved-product-copy"><small>{item.retailer} · VERIFIED API</small><h3>{item.title}</h3>{item.modelNumber && <span>Model {item.modelNumber}</span>}<div><strong>${item.price.toFixed(2)}</strong>{discounted && <em>Save ${(item.regularPrice! - item.price).toFixed(2)}</em>}</div><span>{item.availability}</span><div className="saved-product-actions"><button className={alertActive ? 'active' : ''} onClick={() => toggleAlert(item)}>{alertActive ? '✓ Watching' : '♧ Watch price'}</button><button onClick={() => shopProduct(item.title)}>Search again</button><a href={item.productUrl} target="_blank" rel="noreferrer">View deal ›</a></div></div><button className="saved-remove" onClick={() => removeProduct(item)} aria-label={`Remove ${item.title} from Saved`}>♥</button></article>;
+      })}</div> : <SavedEmpty filtered={Boolean(query)} type="products" clear={() => setQuery('')} browse={() => shopProduct('')}/>}
+    </>}
+    {section === 'stores' && <>{visibleStores.length > 0 ? <div className="saved-store-list">{visibleStores.map(item => <article key={item.id}><b className="saved-store-logo" style={{ background: item.color }}>{item.mark}</b><span><small>{item.distance} · SAVED STORE</small><h3>{item.store}</h3><p>{item.address}</p><div><button onClick={() => openStore(item)}>Show on map</button>{item.coordinates && <a href={`https://www.google.com/maps/dir/?api=1&destination=${item.coordinates[1]},${item.coordinates[0]}`} target="_blank" rel="noreferrer">Directions ›</a>}</div></span><button className="saved-remove" onClick={() => removeStore(item)} aria-label={`Remove ${item.store} from Saved`}>♥</button></article>)}</div> : <SavedEmpty filtered={Boolean(query)} type="stores" clear={() => setQuery('')} browse={browseStores}/>}</>}
+  </section>;
+}
+
+function SavedEmpty({ filtered, type, clear, browse }: { filtered: boolean; type: 'products' | 'stores'; clear: () => void; browse: () => void }) {
+  return <div className="saved-empty"><b>{filtered ? 'No saved matches' : `No saved ${type} yet`}</b><span>{filtered ? 'Try another search or clear the search box.' : type === 'products' ? 'Tap the heart on a verified Search result to keep it here.' : 'Tap the heart on a real Map location to keep it here.'}</span><button onClick={filtered ? clear : browse}>{filtered ? 'Clear search' : type === 'products' ? 'Find products' : 'Explore stores'}</button></div>;
+}
 function Alerts({ notify }: any) { return <section className="page"><h2>Price alerts</h2><article className="featured feed-waiting"><b>Verified alerts</b><h3>No confirmed price drops yet</h3><strong>Retailer connection needed</strong><p>DealRadar will only alert you using prices received from an approved retailer feed.</p><button onClick={() => notify('Retailer connection status opened')}>View connection status ›</button></article><h2 className="subhead">Watching</h2>{[['◉','Apple AirPods Pro'],['▣','Nintendo Switch OLED']].map(a => <button className="alert-row" key={a[1]}><i>{a[0]}</i><b>{a[1]}<small>Waiting for a verified price</small></b><span>›</span></button>)}</section> }
 function Profile({ notify }: any) { const [a,setA]=useState(true); const [b,setB]=useState(true); return <section className="page"><h2>Profile</h2><article className="identity"><i>JD</i><span><h3>Jordan Davis</h3><button onClick={() => notify('Edit profile selected')}>Edit profile ›</button></span></article><h3 className="section-title">Shopping preferences</h3><div className="settings">{[['●','Home location','Kings Mountain, NC 28086'],['⌾','Search radius','10 miles'],['▣','Preferred fulfillment','Pickup & delivery']].map(x => <button key={x[1]}><i>{x[0]}</i><span><b>{x[1]}</b><small>{x[2]}</small></span><em>›</em></button>)}</div><h3 className="section-title">Notifications</h3><div className="settings toggles"><label><i>♧</i><b>Price-drop alerts</b><input type="checkbox" checked={a} onChange={e=>setA(e.target.checked)}/><span/></label><label><i>▣</i><b>Back-in-stock alerts</b><input type="checkbox" checked={b} onChange={e=>setB(e.target.checked)}/><span/></label></div><button className="privacy">♢ <b>Privacy & data</b><span>›</span></button></section> }

@@ -1,0 +1,69 @@
+.save-result {
+  position: absolute;
+  right: 7px;
+  top: 5px;
+  z-index: 2;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: #fff;
+  color: #738090;
+  box-shadow: 0 2px 8px #10203617;
+  font-size: 16px;
+}
+.save-result.saved { color: #e2233c; }
+.search-results .result-price { padding-top: 17px; }
+
+.saved-page { background: linear-gradient(180deg,#fff 0,#fff 175px,#f6f8f9 175px); }
+.saved-title { display: flex; align-items: flex-end; justify-content: space-between; }
+.saved-title small { color: var(--green); font-size: 9px; font-weight: 850; letter-spacing: .08em; }
+.saved-title h2 { margin: 2px 0 15px; }
+.saved-title > span { margin-bottom: 18px; border-radius: 12px; padding: 5px 8px; background: #e7f7ed; color: var(--green); font-size: 9px; font-weight: 750; }
+.saved-page .segments { margin-bottom: 9px; background: #fff; }
+.saved-page .segments button { display: flex; align-items: center; justify-content: center; gap: 5px; }
+.saved-page .segments button b { min-width: 18px; border-radius: 9px; padding: 2px 5px; background: #eef1f4; color: #637181; font-size: 8px; }
+.saved-page .segments .on b { background: #e7f7ed; color: var(--green); }
+.saved-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.saved-toolbar > span { color: #516072; font-size: 9px; font-weight: 750; }
+.saved-toolbar select { border: 1px solid var(--line); border-radius: 12px; padding: 7px 9px; outline: 0; background: #fff; color: #435064; font-size: 9px; }
+.saved-watch-summary { margin-bottom: 10px; background: #fff; }
+
+.saved-product-list,
+.saved-store-list { display: grid; gap: 9px; padding-bottom: 10px; }
+.saved-product-list article,
+.saved-store-list article { position: relative; display: grid; grid-template-columns: 48px minmax(0,1fr) 24px; gap: 10px; border: 1px solid var(--line); border-radius: 18px; padding: 11px; background: #fff; box-shadow: 0 7px 18px #172b3c0a; }
+.saved-product-brand,
+.saved-store-logo { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 13px; background: #f4ce12; color: #112141; font-size: 9px; font-weight: 950; }
+.saved-product-copy,
+.saved-store-list article > span { min-width: 0; }
+.saved-product-copy > small,
+.saved-store-list article small { display: block; color: var(--blue); font-size: 8px; font-weight: 800; }
+.saved-product-copy h3,
+.saved-store-list h3 { margin: 3px 0; font-size: 12px; line-height: 1.25; }
+.saved-product-copy > span { display: block; color: var(--muted); font-size: 8px; }
+.saved-product-copy > div:not(.saved-product-actions) { display: flex; align-items: center; gap: 7px; margin: 7px 0 2px; }
+.saved-product-copy strong { color: var(--green); font-size: 19px; }
+.saved-product-copy em { border-radius: 8px; padding: 3px 5px; background: #e7f7ed; color: var(--green); font-size: 8px; font-style: normal; font-weight: 750; }
+.saved-product-actions,
+.saved-store-list article span > div { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.saved-product-actions button,
+.saved-product-actions a,
+.saved-store-list article span > div button,
+.saved-store-list article span > div a { border: 0; padding: 0; background: none; color: var(--blue); font-size: 8px; font-weight: 750; text-decoration: none; }
+.saved-product-actions button:first-child { color: #7553b3; }
+.saved-product-actions button:first-child.active { color: var(--green); }
+.saved-remove { align-self: start; width: 24px; height: 24px; border: 0; border-radius: 50%; padding: 0; background: #fff0f2; color: #e2233c; font-size: 15px; }
+.saved-store-list article p { overflow: hidden; margin: 4px 0 0; color: var(--muted); font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.saved-empty { display: grid; justify-items: center; gap: 7px; border: 1px dashed #c3cdd5; border-radius: 20px; padding: 34px 22px; background: #fff; color: #435064; text-align: center; }
+.saved-empty b { font-size: 15px; }
+.saved-empty span { max-width: 260px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.saved-empty button { margin-top: 4px; border: 0; border-radius: 16px; padding: 9px 14px; background: var(--green); color: #fff; font-size: 10px; font-weight: 800; }
+
+@media (min-width: 900px) {
+  .saved-product-list,
+  .saved-store-list { grid-template-columns: 1fr 1fr; }
+}

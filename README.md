@@ -35,3 +35,10 @@ Store discovery uses mapped OpenStreetMap records. Price results use official re
 - Working 25-mile and connected-price filters that update as the map moves
 - Store saving, one-tap directions, and map focus from the store list
 - Selected-retailer catalog prices from connected official feeds, with clear inventory caveats
+
+## Saved features
+
+- One device-local collection shared by Search and Map
+- Search and sorting for saved products and real store locations
+- Verified-price watches, product re-search, retailer links, and store directions
+- Immediate removal controls and honest empty states instead of placeholder deals
