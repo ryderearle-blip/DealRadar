@@ -44,6 +44,7 @@ DealRadar is a working mobile web prototype, not yet a production shopping servi
 
 - [x] Production build succeeds locally
 - [x] GitHub main branch contains the validated source
-- [ ] Approve dependency build scripts required by the hosting pipeline
-- [ ] Configure hosted secrets and run a private staging deployment
+- [x] Resolve dependency build-script policy without enabling unreviewed scripts
+- [x] Run an owner-only private staging deployment
+- [ ] Configure the hosted `BEST_BUY_API_KEY`
 - [ ] Verify every critical flow in staging before selecting public access
