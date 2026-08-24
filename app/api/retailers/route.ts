@@ -1,4 +1,5 @@
 import { applyRetailerProbe, buildRetailerStatuses, buildRetailerStatusPayload } from '../../retailer-connections.ts';
+import { ebayIsConfigured } from '../../ebay-connector.ts';
 import { enforceRequestLimit } from '../request-limit.ts';
 
 async function probeBestBuy(apiKey: string) {
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
   if (limited) return limited;
 
   const apiKey = process.env.BEST_BUY_API_KEY?.trim() ?? '';
-  let retailers = buildRetailerStatuses(Boolean(apiKey));
+  let retailers = buildRetailerStatuses({ bestBuyConfigured: Boolean(apiKey), ebayConfigured: ebayIsConfigured() });
   if (probe && apiKey) {
     const checkedAt = new Date().toISOString();
     retailers = applyRetailerProbe(retailers, 'Best Buy', await probeBestBuy(apiKey), checkedAt);

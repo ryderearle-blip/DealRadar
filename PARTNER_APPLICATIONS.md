@@ -118,8 +118,13 @@ Official affiliate program: <https://partnernetwork.ebay.com/>
 
 **Hosting-secret placeholders already prepared**
 
-- `EBAY_CLIENT_ID`
-- `EBAY_CLIENT_SECRET`
+- `EBAY_SANDBOX_CLIENT_ID`
+- `EBAY_SANDBOX_CLIENT_SECRET`
+- `EBAY_SANDBOX_DEV_ID`
+- `EBAY_PRODUCTION_CLIENT_ID`
+- `EBAY_PRODUCTION_CLIENT_SECRET`
+- `EBAY_PRODUCTION_DEV_ID`
+- `EBAY_ENVIRONMENT`
 - `EBAY_CAMPAIGN_ID`
 
 ## Submission checklist

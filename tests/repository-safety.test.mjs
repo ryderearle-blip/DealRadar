@@ -8,10 +8,31 @@ test('retailer credentials remain server-only by convention and source boundary'
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../.gitignore', import.meta.url), 'utf8'),
   ]);
-  assert.doesNotMatch(environmentExample, /NEXT_PUBLIC_(BEST_BUY|AMAZON|WALMART)/);
-  assert.doesNotMatch(clientPage, /process\.env\.(BEST_BUY|AMAZON|WALMART)/);
+  assert.doesNotMatch(environmentExample, /NEXT_PUBLIC_(BEST_BUY|AMAZON|WALMART|EBAY)/);
+  assert.doesNotMatch(clientPage, /process\.env\.(BEST_BUY|AMAZON|WALMART|EBAY)/);
   assert.match(gitignore, /^\.env\*/m);
   assert.match(environmentExample, /^BEST_BUY_API_KEY=/m);
+  assert.match(environmentExample, /^EBAY_SANDBOX_CLIENT_SECRET=/m);
+  assert.match(environmentExample, /^EBAY_PRODUCTION_CLIENT_SECRET=/m);
+});
+
+test('repository source does not contain retailer credential-looking values', async () => {
+  const sensitivePatterns = [
+    /Ryder[A-Za-z-]+(?:SBX|PRD)-[a-f0-9-]{8,}/,
+    /(?:cert|secret|token|api[_-]?key)\s*[:=]\s*["'][A-Za-z0-9_-]{16,}["']/i,
+  ];
+  const files = [
+    '.env.example',
+    'app/api/offers/route.ts',
+    'app/ebay-connector.ts',
+    'README.md',
+    'PARTNER_APPLICATIONS.md',
+  ];
+  const contents = await Promise.all(files.map(file => readFile(new URL(`../${file}`, import.meta.url), 'utf8')));
+  const combined = contents.join('\n');
+  for (const pattern of sensitivePatterns) {
+    assert.doesNotMatch(combined, pattern);
+  }
 });
 
 test('the browser uses the controlled store endpoint before its continuity fallback', async () => {

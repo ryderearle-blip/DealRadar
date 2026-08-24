@@ -1,5 +1,6 @@
 import { buildBestBuyProductFilter, classifyProductMatch } from '../../retailer-logic.ts';
 import { applyRetailerProbe, buildRetailerStatuses } from '../../retailer-connections.ts';
+import { getEbayCredentials, searchEbayOffers } from '../../ebay-connector.ts';
 import { enforceRequestLimit } from '../request-limit.ts';
 
 type LiveOffer = {
@@ -127,7 +128,9 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const query = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
   const bestBuyConfigured = Boolean(process.env.BEST_BUY_API_KEY?.trim());
-  let retailers = buildRetailerStatuses(bestBuyConfigured);
+  const ebayCredentials = getEbayCredentials();
+  const ebayConfigured = Boolean(ebayCredentials);
+  let retailers = buildRetailerStatuses({ bestBuyConfigured, ebayConfigured });
 
   if (query.length < 2) {
     return Response.json({ query, offers: [], retailers, error: 'Enter at least two characters.' }, { status: 400 });
@@ -142,6 +145,16 @@ export async function GET(request: Request) {
   } catch {
     errors.push({ retailer: 'Best Buy', message: 'The live price feed is temporarily unavailable.' });
     if (bestBuyConfigured) retailers = applyRetailerProbe(retailers, 'Best Buy', false, new Date().toISOString());
+  }
+
+  if (ebayCredentials) {
+    try {
+      offers = [...offers, ...await searchEbayOffers(query, ebayCredentials)];
+      retailers = applyRetailerProbe(retailers, 'eBay', true, new Date().toISOString());
+    } catch {
+      errors.push({ retailer: 'eBay', message: 'The eBay listing feed is temporarily unavailable.' });
+      retailers = applyRetailerProbe(retailers, 'eBay', false, new Date().toISOString());
+    }
   }
 
   return Response.json(

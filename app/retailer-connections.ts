@@ -12,14 +12,23 @@ export type RetailerStatus = {
   checkedAt?: string;
 };
 
-export function buildRetailerStatuses(bestBuyConfigured: boolean): RetailerStatus[] {
+export type RetailerConnectionConfig = {
+  bestBuyConfigured: boolean;
+  ebayConfigured: boolean;
+};
+
+export function buildRetailerStatuses(config: boolean | RetailerConnectionConfig): RetailerStatus[] {
+  const normalized = typeof config === 'boolean'
+    ? { bestBuyConfigured: config, ebayConfigured: false }
+    : config;
+
   return [
     {
       retailer: 'Best Buy',
-      state: bestBuyConfigured ? 'connected' : 'needs_credentials',
-      health: bestBuyConfigured ? 'configured' : 'action_required',
+      state: normalized.bestBuyConfigured ? 'connected' : 'needs_credentials',
+      health: normalized.bestBuyConfigured ? 'configured' : 'action_required',
       capability: 'catalog-prices',
-      message: bestBuyConfigured ? 'Official catalog connector configured' : 'Connector built; server API key required',
+      message: normalized.bestBuyConfigured ? 'Official catalog connector configured' : 'Connector built; server API key required',
       requirement: 'Best Buy Developer API key',
       signupUrl: 'https://developer.bestbuy.com/',
     },
@@ -43,11 +52,11 @@ export function buildRetailerStatuses(bestBuyConfigured: boolean): RetailerStatu
     },
     {
       retailer: 'eBay',
-      state: 'partner_access',
-      health: 'action_required',
+      state: normalized.ebayConfigured ? 'connected' : 'needs_credentials',
+      health: normalized.ebayConfigured ? 'configured' : 'action_required',
       capability: 'partner-prices',
-      message: 'Developer and affiliate approval required before price results can be enabled',
-      requirement: 'eBay developer application, Buy API access, and Partner Network campaign ID',
+      message: normalized.ebayConfigured ? 'Browse API connector configured' : 'Connector built; server eBay credentials required',
+      requirement: 'eBay developer keyset and optional Partner Network campaign ID',
       signupUrl: 'https://developer.ebay.com/api-docs/buy/browse/overview.html',
     },
     {
