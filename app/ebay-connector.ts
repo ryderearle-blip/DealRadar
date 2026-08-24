@@ -6,7 +6,7 @@ export type EbayCredentials = {
   environment: EbayEnvironment;
   clientId: string;
   clientSecret: string;
-  devId: string;
+  marketplaceId: string;
   campaignId: string;
 };
 
@@ -74,11 +74,11 @@ export function getEbayCredentials(env = process.env): EbayCredentials | null {
   const prefix = environment === 'production' ? 'EBAY_PRODUCTION' : 'EBAY_SANDBOX';
   const clientId = env[`${prefix}_CLIENT_ID`]?.trim() ?? '';
   const clientSecret = env[`${prefix}_CLIENT_SECRET`]?.trim() ?? '';
-  const devId = env[`${prefix}_DEV_ID`]?.trim() ?? '';
+  const marketplaceId = env.EBAY_MARKETPLACE_ID?.trim() || 'EBAY_US';
   const campaignId = env.EBAY_CAMPAIGN_ID?.trim() ?? '';
 
-  if (!clientId || !clientSecret || !devId) return null;
-  return { environment, clientId, clientSecret, devId, campaignId };
+  if (!clientId || !clientSecret) return null;
+  return { environment, clientId, clientSecret, marketplaceId, campaignId };
 }
 
 export function ebayIsConfigured(env = process.env) {
@@ -87,10 +87,6 @@ export function ebayIsConfigured(env = process.env) {
 
 function ebayBaseUrl(environment: EbayEnvironment) {
   return environment === 'production' ? 'https://api.ebay.com' : 'https://api.sandbox.ebay.com';
-}
-
-function ebayMarketplaceId(environment: EbayEnvironment) {
-  return environment === 'production' ? 'EBAY_US' : 'EBAY_US';
 }
 
 function numberFromAmount(amount: { value?: string; currency?: string } | undefined) {
@@ -201,7 +197,7 @@ export async function searchEbayOffers(query: string, credentials: EbayCredentia
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
-        'X-EBAY-C-MARKETPLACE-ID': ebayMarketplaceId(credentials.environment),
+        'X-EBAY-C-MARKETPLACE-ID': credentials.marketplaceId,
       },
     });
     if (!response.ok) throw new Error(`eBay Browse API returned ${response.status}`);
