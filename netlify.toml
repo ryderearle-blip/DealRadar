@@ -7,6 +7,7 @@
   PNPM_VERSION = "11.19.0"
   PNPM_FLAGS = "--shamefully-hoist"
   NETLIFY_NEXT_SKEW_PROTECTION = "true"
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache/**"
 
 [dev]
   command = "pnpm next:dev"
